@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 
 interface FormErrors {
   firstName?: string;
@@ -14,6 +14,7 @@ interface FormErrors {
 }
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -23,7 +24,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [success, setSuccess] = useState(false);
 
   function validate(): boolean {
     const newErrors: FormErrors = {};
@@ -71,72 +71,31 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const supabase = createClient();
-      const { error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: firstName.trim(),
-            last_name: lastName.trim(),
-            phone: phone.trim() || undefined,
-          },
-        },
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          phone: phone.trim() || undefined,
+        }),
       });
 
-      if (authError) {
-        setError(authError.message);
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Registration failed. Please try again.');
         return;
       }
 
-      setSuccess(true);
+      router.refresh();
+      router.push('/dashboard');
     } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
-  }
-
-  if (success) {
-    return (
-      <div className="flex min-h-full flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-md">
-          <div className="rounded-xl border border-sand-200 bg-white p-8 shadow-sm">
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gold-50">
-                <svg
-                  className="h-6 w-6 text-gold-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
-                  />
-                </svg>
-              </div>
-              <h2 className="text-xl font-semibold text-gray-900">
-                Check your email
-              </h2>
-              <p className="mt-2 text-sm text-gray-600">
-                We sent a confirmation link to{' '}
-                <span className="font-medium text-gray-900">{email}</span>.
-                Please verify your email to complete registration.
-              </p>
-              <Link
-                href="/login"
-                className="mt-6 inline-block text-sm font-medium text-gold-600 hover:text-gold-700"
-              >
-                Back to sign in
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   return (

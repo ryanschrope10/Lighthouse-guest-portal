@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -26,6 +26,13 @@ interface PortalShellProps {
 
 export function PortalShell({ guestName, children }: PortalShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
 
   function isActive(href: string) {
     if (href === "/dashboard") {
@@ -87,15 +94,14 @@ export function PortalShell({ guestName, children }: PortalShellProps) {
 
         {/* Logout */}
         <div className="border-t border-sand-200 p-3">
-          <form action="/auth/signout" method="post">
-            <button
-              type="submit"
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sand-600 transition-colors hover:bg-sand-50 hover:text-gray-900"
-            >
-              <LogOut className="h-5 w-5 flex-shrink-0 text-sand-400" />
-              Log out
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sand-600 transition-colors hover:bg-sand-50 hover:text-gray-900"
+          >
+            <LogOut className="h-5 w-5 flex-shrink-0 text-sand-400" />
+            Log out
+          </button>
         </div>
       </aside>
 
