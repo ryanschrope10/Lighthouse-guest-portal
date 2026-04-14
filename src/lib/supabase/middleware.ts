@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { verifyToken, getTokenFromRequest } from '@/lib/auth';
+
+const COOKIE_NAME = 'auth-token';
 
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -19,12 +20,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
-  // Verify JWT from cookie
-  const token = getTokenFromRequest(request);
-  const payload = token ? verifyToken(token) : null;
+  // Check for auth cookie existence (lightweight gate).
+  // Full JWT verification happens in the portal layout (Node.js runtime).
+  const token = request.cookies.get(COOKIE_NAME)?.value;
 
   // Redirect unauthenticated users to login
-  if (!payload && !isPublicRoute) {
+  if (!token && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', pathname);
@@ -32,7 +33,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages
-  if (payload && isPublicRoute) {
+  if (token && isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);
