@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "guest-portal-prod",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--max-old-space-size=400", ".next/standalone/server.js"],
+      "port": 3000
     }
   ]
 }

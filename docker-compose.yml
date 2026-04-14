@@ -3,10 +3,13 @@ services:
     build: .
     ports:
       - "3000:3000"
-    volumes:
-      - ./src:/app/src
-      - ./public:/app/public
-    env_file:
-      - .env.local
     environment:
-      - WATCHPACK_POLLING=true
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder-key
+    deploy:
+      resources:
+        limits:
+          memory: 512M

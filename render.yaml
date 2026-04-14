@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: guest-portal
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: node --max-old-space-size=450 .next/standalone/server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
