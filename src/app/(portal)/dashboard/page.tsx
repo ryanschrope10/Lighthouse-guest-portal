@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { format, formatDistanceToNow, isPast, differenceInDays } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   DollarSign,
   CalendarDays,
@@ -10,34 +10,22 @@ import {
   Phone,
   ChevronRight,
   CheckCircle2,
-  AlertTriangle,
-  FileWarning,
-  FileSignature,
   CreditCard,
   MapPin,
   Clock,
   LogIn,
   Banknote,
-  FileText,
   Bell,
+  AlertCircle,
 } from "lucide-react";
 
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  mockGuest,
-  mockProperty,
-  mockBookings,
-  mockInvoices,
-  mockDocuments,
-  mockActivity,
-  type ActivityItem,
-} from "@/lib/mock-data";
-import type { Booking, Invoice, GuestDocument } from "@/types/index";
+import { Spinner } from "@/components/ui/spinner";
+import { LocalGuide } from "@/components/local-guide";
+import { getLocalGuide } from "@/lib/local-guide";
+import type { Booking, Guest, ApiResponse } from "@/types/index";
 
-// ------------------------------------------------------------------
-// Helper: format currency
-// ------------------------------------------------------------------
 function dollars(amount: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -45,9 +33,14 @@ function dollars(amount: number): string {
   }).format(amount);
 }
 
-// ------------------------------------------------------------------
-// Helper: activity icon
-// ------------------------------------------------------------------
+interface ActivityItem {
+  id: string;
+  type: "payment" | "booking" | "checkin" | "notification";
+  title: string;
+  description: string;
+  timestamp: string;
+}
+
 function ActivityIcon({ type }: { type: ActivityItem["type"] }) {
   const base = "h-4 w-4";
   switch (type) {
@@ -55,8 +48,6 @@ function ActivityIcon({ type }: { type: ActivityItem["type"] }) {
       return <Banknote className={`${base} text-green-600`} />;
     case "booking":
       return <CalendarDays className={`${base} text-blue-600`} />;
-    case "document":
-      return <FileText className={`${base} text-gold-600`} />;
     case "checkin":
       return <LogIn className={`${base} text-gold-700`} />;
     case "notification":
@@ -66,107 +57,177 @@ function ActivityIcon({ type }: { type: ActivityItem["type"] }) {
   }
 }
 
-// ------------------------------------------------------------------
-// Derived data
-// ------------------------------------------------------------------
-function useAlerts(
-  invoices: Invoice[],
-  documents: GuestDocument[],
-): { id: string; icon: React.ReactNode; label: string; href: string }[] {
-  return useMemo(() => {
-    const alerts: { id: string; icon: React.ReactNode; label: string; href: string }[] = [];
-
-    // Overdue invoices
-    const overdue = invoices.filter((i) => i.status === "overdue");
-    overdue.forEach((inv) => {
-      alerts.push({
-        id: `overdue-${inv.id}`,
-        icon: <CreditCard className="h-5 w-5 text-red-500" />,
-        label: `Overdue: ${inv.description ?? dollars(inv.amount)}`,
-        href: "/payments",
+/** Build a recent-activity feed from the guest's real Newbook bookings. */
+function deriveActivity(bookings: Booking[]): ActivityItem[] {
+  const items: ActivityItem[] = [];
+  for (const b of bookings) {
+    const where = `${b.site_or_room ?? "Stay"} — ${b.property?.name ?? ""}`;
+    if (b.status === "cancelled") {
+      items.push({
+        id: `cx-${b.id}`,
+        type: "notification",
+        title: "Booking cancelled",
+        description: where,
+        timestamp: b.synced_at,
       });
+    }
+    if (b.status === "checked_out") {
+      items.push({
+        id: `co-${b.id}`,
+        type: "checkin",
+        title: "Checked out",
+        description: where,
+        timestamp: b.check_out,
+      });
+    }
+    if (b.status === "checked_in") {
+      items.push({
+        id: `ci-${b.id}`,
+        type: "checkin",
+        title: "Checked in",
+        description: where,
+        timestamp: b.check_in,
+      });
+    }
+    items.push({
+      id: `bk-${b.id}`,
+      type: "booking",
+      title: "Booking confirmed",
+      description: `${where} — ${format(new Date(b.check_in), "MMM d")} to ${format(
+        new Date(b.check_out),
+        "MMM d, yyyy",
+      )}`,
+      timestamp: b.created_at,
     });
-
-    // Expiring / expired insurance
-    const now = new Date();
-    documents
-      .filter((d) => d.type === "insurance" && d.expires_at)
-      .forEach((doc) => {
-        const exp = new Date(doc.expires_at!);
-        const daysLeft = differenceInDays(exp, now);
-        if (isPast(exp)) {
-          alerts.push({
-            id: `expired-${doc.id}`,
-            icon: <FileWarning className="h-5 w-5 text-red-500" />,
-            label: `Expired: ${doc.label ?? "Insurance document"}`,
-            href: "/documents",
-          });
-        } else if (daysLeft <= 30) {
-          alerts.push({
-            id: `expiring-${doc.id}`,
-            icon: <AlertTriangle className="h-5 w-5 text-amber-500" />,
-            label: `Expiring in ${daysLeft} days: ${doc.label ?? "Insurance"}`,
-            href: "/documents",
-          });
-        }
-      });
-
-    // Unsigned documents (file_path is empty)
-    documents
-      .filter((d) => d.type === "signed_agreement" && !d.file_path && !d.verified_at)
-      .forEach((doc) => {
-        alerts.push({
-          id: `unsigned-${doc.id}`,
-          icon: <FileSignature className="h-5 w-5 text-amber-600" />,
-          label: `Needs signature: ${doc.label ?? "Document"}`,
-          href: "/documents",
-        });
-      });
-
-    return alerts;
-  }, [invoices, documents]);
+  }
+  return items
+    .filter((i) => i.timestamp)
+    .sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    )
+    .slice(0, 6);
 }
 
-// ------------------------------------------------------------------
-// Dashboard Page
-// ------------------------------------------------------------------
 export default function DashboardPage() {
-  // TODO: Replace with useGuest() and fetched data once Supabase is wired up
-  const guest = mockGuest;
-  const property = mockProperty;
-  const bookings = mockBookings;
-  const invoices = mockInvoices;
-  const documents = mockDocuments;
-  const activity = mockActivity;
+  const [bookings, setBookings] = useState<Booking[] | null>(null);
+  const [guest, setGuest] = useState<Guest | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Total outstanding balance
-  const totalBalance = bookings.reduce((sum, b) => sum + b.balance_due, 0);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [bRes, gRes] = await Promise.all([
+          fetch("/api/bookings"),
+          fetch("/api/guest/profile"),
+        ]);
+        const bJson: ApiResponse<Booking[]> = await bRes.json();
+        if (cancelled) return;
+        if (bJson.error || !bJson.data) {
+          setError(bJson.error ?? "Failed to load your portal data");
+          return;
+        }
+        setBookings(bJson.data);
+        if (gRes.ok) {
+          const gJson: ApiResponse<Guest> = await gRes.json();
+          if (!cancelled && gJson.data) setGuest(gJson.data);
+        }
+      } catch {
+        if (!cancelled) setError("Could not reach the portal service.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  // Next upcoming booking
-  const upcomingBooking = bookings
-    .filter((b) => b.status === "upcoming" || b.status === "checked_in")
-    .sort(
-      (a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime(),
-    )[0] as Booking | undefined;
+  const property = bookings?.find((b) => b.property)?.property ?? null;
+  const guide = getLocalGuide(property?.slug);
 
-  // Alerts
-  const alerts = useAlerts(invoices, documents);
+  // account_balance is account-wide and repeats across a guest's
+  // bookings, so the outstanding total is the max — not the sum.
+  const totalBalance = useMemo(
+    () =>
+      bookings
+        ? Math.max(0, ...bookings.map((b) => b.balance_due), 0)
+        : 0,
+    [bookings],
+  );
 
-  // Current date formatted
+  const upcomingBooking = useMemo(
+    () =>
+      bookings
+        ?.filter(
+          (b) => b.status === "upcoming" || b.status === "checked_in",
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.check_in).getTime() - new Date(b.check_in).getTime(),
+        )[0],
+    [bookings],
+  );
+
+  const alerts = useMemo(() => {
+    if (!bookings) return [];
+    const out: { id: string; label: string; href: string }[] = [];
+    for (const b of bookings) {
+      for (const inv of b.invoices ?? []) {
+        if (inv.status === "overdue" || inv.status === "partial") {
+          out.push({
+            id: `inv-${inv.id}`,
+            label: `${inv.status === "overdue" ? "Overdue" : "Balance due"}: ${
+              inv.description ?? dollars(inv.amount)
+            }`,
+            href: "/payments",
+          });
+        }
+      }
+    }
+    return out;
+  }, [bookings]);
+
+  const activity = useMemo(
+    () => (bookings ? deriveActivity(bookings) : []),
+    [bookings],
+  );
+
   const today = format(new Date(), "EEEE, MMMM d, yyyy");
 
+  if (error) {
+    return (
+      <div className="mx-auto w-full max-w-6xl">
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+          <div>
+            <p className="text-sm font-medium text-red-800">
+              Couldn&apos;t load your dashboard
+            </p>
+            <p className="mt-1 text-sm text-red-700">{error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!bookings) {
+    return (
+      <div className="mx-auto flex w-full max-w-6xl justify-center pt-24">
+        <Spinner />
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto w-full max-w-lg px-4 pb-24 pt-6 sm:px-6">
-      {/* --------------------------------------------------------- */}
-      {/* 1. Welcome Card                                           */}
-      {/* --------------------------------------------------------- */}
-      <Card className="mb-4 border-gold-100 bg-gold-50">
+    <div className="mx-auto w-full max-w-6xl">
+      {/* 1. Welcome */}
+      <Card className="border-gold-100 bg-gold-50">
         <CardBody>
           <h1 className="text-xl font-semibold text-gray-900">
-            Welcome back, {guest.first_name}
+            Welcome back{guest?.first_name ? `, ${guest.first_name}` : ""}
           </h1>
           <p className="mt-1 text-sm text-sand-600">{today}</p>
-          {property.branding.welcome_message && (
+          {property?.branding.welcome_message && (
             <p className="mt-2 text-sm text-sand-700">
               {property.branding.welcome_message}
             </p>
@@ -174,10 +235,11 @@ export default function DashboardPage() {
         </CardBody>
       </Card>
 
-      {/* --------------------------------------------------------- */}
-      {/* 2. Outstanding Balance                                    */}
-      {/* --------------------------------------------------------- */}
-      <Card className="mb-4">
+      <div className="mt-4 grid gap-4 lg:mt-6 lg:grid-cols-3 lg:gap-6">
+        {/* Left / main column */}
+        <div className="space-y-4 lg:col-span-2 lg:space-y-6">
+      {/* 2. Outstanding Balance */}
+      <Card>
         <CardBody>
           {totalBalance > 0 ? (
             <>
@@ -210,10 +272,8 @@ export default function DashboardPage() {
         </CardBody>
       </Card>
 
-      {/* --------------------------------------------------------- */}
-      {/* 3. Upcoming / Current Booking                             */}
-      {/* --------------------------------------------------------- */}
-      <Card className="mb-4">
+      {/* 3. Upcoming / Current Booking */}
+      <Card>
         <CardBody>
           {upcomingBooking ? (
             <Link
@@ -228,7 +288,7 @@ export default function DashboardPage() {
                       : "Upcoming Stay"}
                   </p>
                   <p className="mt-1 font-semibold text-gray-900">
-                    {property.name}
+                    {upcomingBooking.property?.name ?? "Your stay"}
                   </p>
                   {upcomingBooking.site_or_room && (
                     <div className="mt-1 flex items-center gap-1 text-sm text-sand-600">
@@ -240,7 +300,10 @@ export default function DashboardPage() {
                     <CalendarDays className="h-3.5 w-3.5" />
                     {format(new Date(upcomingBooking.check_in), "MMM d")}
                     {" — "}
-                    {format(new Date(upcomingBooking.check_out), "MMM d, yyyy")}
+                    {format(
+                      new Date(upcomingBooking.check_out),
+                      "MMM d, yyyy",
+                    )}
                   </div>
                 </div>
                 <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-sand-400" />
@@ -249,21 +312,14 @@ export default function DashboardPage() {
           ) : (
             <div className="text-center py-2">
               <p className="text-sand-600">No upcoming stays</p>
-              <Link href="/bookings" className="mt-3 inline-block">
-                <Button variant="secondary" size="sm">
-                  Book Now
-                </Button>
-              </Link>
             </div>
           )}
         </CardBody>
       </Card>
 
-      {/* --------------------------------------------------------- */}
-      {/* 4. Action Needed Alerts                                   */}
-      {/* --------------------------------------------------------- */}
+      {/* 4. Action Needed */}
       {alerts.length > 0 && (
-        <Card className="mb-4">
+        <Card>
           <CardBody className="!py-0">
             <p className="pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-sand-500">
               Action Needed
@@ -275,7 +331,7 @@ export default function DashboardPage() {
                     href={alert.href}
                     className="flex min-h-[44px] items-center gap-3 py-3"
                   >
-                    <div className="shrink-0">{alert.icon}</div>
+                    <CreditCard className="h-5 w-5 shrink-0 text-red-500" />
                     <span className="flex-1 text-sm text-gray-800">
                       {alert.label}
                     </span>
@@ -288,32 +344,20 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* --------------------------------------------------------- */}
-      {/* 5. Quick Actions Grid (2x2)                               */}
-      {/* --------------------------------------------------------- */}
-      <div className="mb-4 grid grid-cols-2 gap-3">
+      {/* Explore the area */}
+      {guide && <LocalGuide guide={guide} />}
+        </div>
+
+        {/* Right column */}
+        <div className="space-y-4 lg:space-y-6">
+      {/* 5. Quick Actions */}
+      <div className="grid grid-cols-2 gap-3">
         {(
           [
-            {
-              label: "Pay Balance",
-              icon: DollarSign,
-              href: "/payments",
-            },
-            {
-              label: "My Bookings",
-              icon: CalendarDays,
-              href: "/bookings",
-            },
-            {
-              label: "Upload Doc",
-              icon: Upload,
-              href: "/documents",
-            },
-            {
-              label: "Contact Us",
-              icon: Phone,
-              href: "/contact",
-            },
+            { label: "Pay Balance", icon: DollarSign, href: "/payments" },
+            { label: "My Bookings", icon: CalendarDays, href: "/bookings" },
+            { label: "Upload Doc", icon: Upload, href: "/documents" },
+            { label: "Contact Us", icon: Phone, href: "/contact" },
           ] as const
         ).map((action) => (
           <Link key={action.href} href={action.href}>
@@ -331,38 +375,40 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* --------------------------------------------------------- */}
-      {/* 6. Recent Activity                                        */}
-      {/* --------------------------------------------------------- */}
-      <Card>
-        <CardBody className="!py-0">
-          <p className="pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-sand-500">
-            Recent Activity
-          </p>
-          <ul className="divide-y divide-sand-100">
-            {activity.slice(0, 5).map((item) => (
-              <li key={item.id} className="flex items-start gap-3 py-3">
-                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sand-50">
-                  <ActivityIcon type={item.type} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">
-                    {item.title}
-                  </p>
-                  <p className="truncate text-sm text-sand-600">
-                    {item.description}
-                  </p>
-                </div>
-                <span className="shrink-0 text-xs text-sand-500 pt-0.5">
-                  {formatDistanceToNow(new Date(item.timestamp), {
-                    addSuffix: true,
-                  })}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </CardBody>
-      </Card>
+      {/* 6. Recent Activity */}
+      {activity.length > 0 && (
+        <Card>
+          <CardBody className="!py-0">
+            <p className="pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-sand-500">
+              Recent Activity
+            </p>
+            <ul className="divide-y divide-sand-100">
+              {activity.map((item) => (
+                <li key={item.id} className="flex items-start gap-3 py-3">
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sand-50">
+                    <ActivityIcon type={item.type} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">
+                      {item.title}
+                    </p>
+                    <p className="truncate text-sm text-sand-600">
+                      {item.description}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs text-sand-500 pt-0.5">
+                    {formatDistanceToNow(new Date(item.timestamp), {
+                      addSuffix: true,
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+        </div>
+      </div>
     </div>
   );
 }

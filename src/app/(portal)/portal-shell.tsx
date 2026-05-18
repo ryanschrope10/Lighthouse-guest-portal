@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { NotificationBell } from "@/components/notification-bell";
+import { useGuest } from "@/lib/context/guest-context";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -19,14 +21,67 @@ const navItems = [
   { href: "/profile", label: "Profile", icon: User },
 ] as const;
 
-interface PortalShellProps {
-  guestName: string;
-  children: React.ReactNode;
+function monogram(name: string): string {
+  return name.trim().charAt(0).toUpperCase() || "G";
 }
 
-export function PortalShell({ guestName, children }: PortalShellProps) {
+/** Park logo with graceful fallback to a brand-colored monogram. */
+function BrandMark({
+  name,
+  logoUrl,
+  color,
+}: {
+  name: string;
+  logoUrl?: string;
+  color?: string;
+}) {
+  // Preload the logo and only swap it in once it actually loads, so a
+  // missing file never flashes broken-image alt text — the monogram
+  // is the default until a real logo exists at logoUrl.
+  const [logoOk, setLogoOk] = useState(false);
+
+  useEffect(() => {
+    if (!logoUrl) return;
+    let active = true;
+    const img = new Image();
+    img.onload = () => active && setLogoOk(true);
+    img.onerror = () => active && setLogoOk(false);
+    img.src = logoUrl;
+    return () => {
+      active = false;
+    };
+  }, [logoUrl]);
+
+  if (logoUrl && logoOk) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt={`${name} logo`}
+        className="h-9 w-auto max-w-[150px] object-contain"
+      />
+    );
+  }
+
+  return (
+    <div
+      className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white"
+      style={{ backgroundColor: color || "#b47a24" }}
+    >
+      {monogram(name)}
+    </div>
+  );
+}
+
+export function PortalShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { guest, property } = useGuest();
+
+  const parkName = property?.name ?? "Guest Portal";
+  const logoUrl = property?.branding?.logo_url;
+  const brandColor = property?.branding?.primary_color;
+  const guestName = guest?.first_name ?? "Guest";
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -45,17 +100,13 @@ export function PortalShell({ guestName, children }: PortalShellProps) {
     <div className="min-h-screen bg-sand-50 md:flex">
       {/* ── Desktop Sidebar ── */}
       <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r border-sand-200 bg-white">
-        {/* Sidebar header */}
         <div className="flex h-16 items-center gap-3 border-b border-sand-200 px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-600 text-white text-sm font-bold">
-            L
-          </div>
-          <span className="text-base font-semibold text-gray-900">
-            Guest Portal
+          <BrandMark name={parkName} logoUrl={logoUrl} color={brandColor} />
+          <span className="text-base font-semibold text-gray-900 line-clamp-2 leading-tight">
+            {parkName}
           </span>
         </div>
 
-        {/* Guest name */}
         <div className="px-6 py-4 border-b border-sand-100">
           <p className="text-xs font-medium uppercase tracking-wide text-sand-500">
             Welcome back
@@ -65,7 +116,6 @@ export function PortalShell({ guestName, children }: PortalShellProps) {
           </p>
         </div>
 
-        {/* Navigation links */}
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map((item) => {
             const active = isActive(item.href);
@@ -92,7 +142,6 @@ export function PortalShell({ guestName, children }: PortalShellProps) {
           })}
         </nav>
 
-        {/* Logout */}
         <div className="border-t border-sand-200 p-3">
           <button
             type="button"
@@ -109,12 +158,10 @@ export function PortalShell({ guestName, children }: PortalShellProps) {
       <div className="flex flex-1 flex-col md:pl-60">
         {/* Mobile top header */}
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-sand-200 bg-white px-4 md:hidden">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gold-600 text-white text-xs font-bold">
-              L
-            </div>
-            <span className="text-base font-semibold text-gray-900">
-              Guest Portal
+          <div className="flex items-center gap-2.5 min-w-0">
+            <BrandMark name={parkName} logoUrl={logoUrl} color={brandColor} />
+            <span className="truncate text-base font-semibold text-gray-900">
+              {parkName}
             </span>
           </div>
           <NotificationBell unreadCount={3} />

@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import { sql } from '@/lib/db';
 import { signToken, setAuthCookie } from '@/lib/auth';
+import { getDemoGuestId } from '@/lib/newbook/config';
+
+// Local/test auth: a single configured guest login that maps to the
+// Newbook demo guest, so testers can walk the full guest experience
+// without a user database. Replace with real per-guest auth + a
+// portal-login <-> Newbook-guest mapping before production.
+const TEST_EMAIL = process.env.TEST_USER_EMAIL || 'guest@holidaymotel.test';
+const TEST_PASSWORD = process.env.TEST_USER_PASSWORD || 'holiday123';
 
 export async function POST(request: Request) {
   try {
@@ -14,24 +20,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const matches =
+      normalizedEmail === TEST_EMAIL.toLowerCase() &&
+      password === TEST_PASSWORD;
 
-    const rows = await sql`
-      SELECT id, email, password_hash, first_name, last_name, phone, role
-      FROM users WHERE email = ${normalizedEmail}
-    `;
-
-    if (rows.length === 0) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
-    }
-
-    const user = rows[0];
-    const passwordValid = await bcrypt.compare(password, user.password_hash);
-
-    if (!passwordValid) {
+    if (!matches) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
@@ -39,21 +33,14 @@ export async function POST(request: Request) {
     }
 
     const token = signToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
+      userId: `newbook:${getDemoGuestId()}`,
+      email: normalizedEmail,
+      role: 'guest',
     });
 
     const response = NextResponse.json({
       success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        phone: user.phone,
-        role: user.role,
-      },
+      user: { email: normalizedEmail, role: 'guest' },
     });
 
     setAuthCookie(response, token);

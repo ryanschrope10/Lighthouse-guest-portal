@@ -1,61 +1,32 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getDemoGuest } from '@/lib/newbook/data';
 import type { Guest, ApiResponse } from '@/types';
 
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const guest = await getDemoGuest();
 
-    if (!user) {
+    if (!guest) {
       return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: 'Unauthorized' },
-        { status: 401 }
+        { data: null, error: 'No guest record found in Newbook' },
+        { status: 404 }
       );
     }
 
-    // TODO: Replace with real Supabase query
-    // const { data: guest, error } = await supabase
-    //   .from('guests')
-    //   .select('*')
-    //   .eq('auth_user_id', user.id)
-    //   .single();
-
-    const mockGuest: Guest = {
-      id: 'guest-001',
-      auth_user_id: user.id,
-      newbook_guest_id: null,
-      email: user.email ?? '',
-      first_name: 'Jane',
-      last_name: 'Doe',
-      phone: '(555) 123-4567',
-      address: {
-        street: '123 Main St',
-        city: 'Anytown',
-        state: 'TX',
-        zip: '75001',
-        country: 'US',
-      },
-      preferences: {
-        kids_count: 2,
-        kids_ages: [5, 8],
-        pets: [{ type: 'dog', breed: 'Golden Retriever', name: 'Buddy' }],
-        site_preferences: 'Pull-through, shaded',
-        special_needs: '',
-      },
-      created_at: '2025-01-15T10:00:00Z',
-      updated_at: '2025-03-20T14:30:00Z',
-    };
-
     return NextResponse.json<ApiResponse<Guest>>(
-      { data: mockGuest, error: null },
+      { data: guest, error: null },
       { status: 200 }
     );
   } catch (error) {
     console.error('GET /api/guest/profile error:', error);
     return NextResponse.json<ApiResponse<null>>(
-      { data: null, error: 'Internal server error' },
-      { status: 500 }
+      {
+        data: null,
+        error:
+          error instanceof Error ? error.message : 'Failed to load profile',
+      },
+      { status: 502 }
     );
   }
 }

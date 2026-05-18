@@ -1,305 +1,219 @@
 // ============================================================
-// NewBook <-> Portal Type Mappers
+// Newbook -> Portal mappers
 // ============================================================
 //
-// Functions to convert between NewBook API types and our internal
-// portal types. These handle naming convention differences
-// (e.g., NewBook "surname" -> portal "last_name"), structural
-// differences (flat vs nested), and value normalization.
-//
-// Pattern reference for common field mappings:
-//   NewBook "surname"       -> Portal "last_name"
-//   NewBook "firstname"     -> Portal "first_name"
-//   NewBook "mobile"        -> Portal "phone"
-//   NewBook "suburb"        -> Portal "city"
-//   NewBook "postcode"      -> Portal "zip"
-//   NewBook "country_code"  -> Portal "country"
-//   NewBook "arrival_date"  -> Portal "check_in"
-//   NewBook "departure_date"-> Portal "check_out"
-//   NewBook "site_name"     -> Portal "site_or_room"
-//   NewBook "total_charge"  -> Portal "total_amount"
-//   NewBook "balance_owing" -> Portal "balance_due"
-//   NewBook "unit_amount"   -> Portal "unit_price"
-//
-// NOTE: These mappings are based on expected API shape and
-// will need adjustment once we have live API data to verify.
+// Newbook is the source of truth; the portal has no DB-backed
+// booking/guest tables yet, so we map Newbook records straight
+// into the portal's display types. IDs are derived from Newbook
+// IDs so a list item and its detail page resolve to the same
+// record without any local persistence.
 // ============================================================
 
 import type {
   Guest,
-  GuestAddress,
   Booking,
   BookingStatus,
   Invoice,
   InvoiceStatus,
   InvoiceLineItem,
+  Property,
 } from '@/types/index';
 
-import type {
-  NewBookGuest,
-  NewBookBooking,
-  NewBookInvoice,
-  NewBookInvoiceLineItem,
-} from './types';
+import type { NewBookBooking, NewBookGuest } from './types';
 
-// --- Guest Mappers ---
+// Stable, deterministic portal IDs from Newbook IDs.
+export const bookingPortalId = (id: number | string) => `nb-bk-${id}`;
+export const invoicePortalId = (id: number | string) => `nb-inv-${id}`;
+export const guestPortalId = (id: number | string) => `nb-g-${id}`;
 
-/**
- * Map a NewBook guest record to our internal Guest type.
- *
- * Note: Some fields like `id`, `auth_user_id`, and `created_at`
- * are portal-only and cannot be derived from NewBook data.
- * These are left as empty/default values and must be populated
- * by the caller (typically during upsert).
- *
- * @param nbGuest - Guest data from NewBook API
- * @returns Partial Guest object (missing portal-only fields)
- */
-export function mapNewBookGuestToGuest(nbGuest: NewBookGuest): Omit<Guest, 'id' | 'auth_user_id' | 'created_at' | 'updated_at'> {
-  const address: GuestAddress = {
-    // NewBook "address_line_1" -> portal "street"
-    street: [nbGuest.address_line_1, nbGuest.address_line_2]
-      .filter(Boolean)
-      .join(', ') || undefined,
-    // NewBook "suburb" -> portal "city"
-    city: nbGuest.suburb ?? undefined,
-    state: nbGuest.state ?? undefined,
-    // NewBook "postcode" -> portal "zip"
-    zip: nbGuest.postcode ?? undefined,
-    // NewBook "country_code" -> portal "country"
-    country: nbGuest.country_code ?? undefined,
-  };
+const num = (v: unknown): number => {
+  const n = parseFloat(String(v ?? '0'));
+  return Number.isFinite(n) ? n : 0;
+};
 
+/** Newbook dates are "YYYY-MM-DD HH:MM:SS" (property-local). Make them ISO-parseable. */
+const toIso = (nbDate: string | null | undefined): string =>
+  nbDate ? nbDate.replace(' ', 'T') : '';
+
+/** The lead guest on a booking (primary_client === "1"), else the first. */
+export function primaryGuest(b: NewBookBooking): NewBookGuest | undefined {
+  const guests = b.guests ?? [];
+  return guests.find((g) => String(g.primary_client) === '1') ?? guests[0];
+}
+
+function contact(g: NewBookGuest | undefined, type: string): string | null {
+  const hit = g?.contact_details?.find(
+    (c) => c.type?.toLowerCase() === type && c.content
+  );
+  return hit?.content ?? null;
+}
+
+export function mapGuest(
+  g: NewBookGuest
+): Omit<Guest, 'id' | 'auth_user_id' | 'created_at' | 'updated_at'> {
   return {
-    newbook_guest_id: String(nbGuest.guest_id),
-    email: nbGuest.email,
-    // NewBook "firstname" -> portal "first_name"
-    first_name: nbGuest.firstname || null,
-    // NewBook "surname" -> portal "last_name"
-    last_name: nbGuest.surname || null,
-    // NewBook "mobile" takes precedence, fall back to "phone"
-    phone: nbGuest.mobile || nbGuest.phone || null,
-    address,
-    // TODO: Map custom_fields to preferences if NewBook stores
-    // kids_count, pets, etc. in custom fields
+    newbook_guest_id: String(g.guest_id),
+    email: contact(g, 'email') ?? '',
+    first_name: g.firstname || null,
+    last_name: g.lastname || null,
+    phone: contact(g, 'mobile') ?? contact(g, 'phone'),
+    address: {
+      street: g.street || undefined,
+      city: g.city || undefined,
+      state: g.state_shortname || g.state_name || undefined,
+      zip: g.postcode || undefined,
+      country: g.country_code || undefined,
+    },
     preferences: {},
   };
 }
 
-/**
- * Map our internal Guest type to a NewBook guest record for API push.
- *
- * Only includes fields that NewBook accepts for create/update.
- * Read-only fields (date_created, etc.) are excluded.
- *
- * @param guest - Portal guest data
- * @returns NewBook-shaped guest object for API submission
- */
-export function mapGuestToNewBookGuest(guest: Guest): Partial<NewBookGuest> {
-  // TODO: Determine which fields are writable via NewBook API
-  // TODO: Handle address_line_1 vs address_line_2 split properly
-
-  return {
-    // Portal "first_name" -> NewBook "firstname"
-    firstname: guest.first_name || '',
-    // Portal "last_name" -> NewBook "surname"
-    surname: guest.last_name || '',
-    email: guest.email,
-    // Portal "phone" -> NewBook "mobile"
-    mobile: guest.phone,
-    // Portal "street" -> NewBook "address_line_1"
-    address_line_1: guest.address?.street || null,
-    address_line_2: null,
-    // Portal "city" -> NewBook "suburb"
-    suburb: guest.address?.city || null,
-    state: guest.address?.state || null,
-    // Portal "zip" -> NewBook "postcode"
-    postcode: guest.address?.zip || null,
-    // Portal "country" -> NewBook "country_code"
-    country_code: guest.address?.country || null,
-    // TODO: Map preferences back to custom_fields if needed
-  };
+function mapBookingStatus(b: NewBookBooking): BookingStatus {
+  if (b.booking_cancelled) return 'cancelled';
+  if (b.booking_checkedout || b.booking_status === 'Departed')
+    return 'checked_out';
+  if (b.booking_checkedin || b.booking_status === 'Arrived')
+    return 'checked_in';
+  return 'upcoming';
 }
 
-// --- Booking Mappers ---
-
-/**
- * Map NewBook booking status strings to our internal BookingStatus enum.
- *
- * NewBook uses: "confirmed", "in_house", "checked_out", "cancelled"
- * Portal uses: "upcoming", "checked_in", "checked_out", "cancelled"
- *
- * @param nbStatus - Status string from NewBook
- * @returns Portal BookingStatus value
- */
-function mapBookingStatus(nbStatus: string): BookingStatus {
-  // TODO: Verify exact status strings from NewBook API
-  const statusMap: Record<string, BookingStatus> = {
-    confirmed: 'upcoming',
-    tentative: 'upcoming',
-    // NewBook "in_house" -> portal "checked_in"
-    in_house: 'checked_in',
-    checked_out: 'checked_out',
-    cancelled: 'cancelled',
-    no_show: 'cancelled',
-  };
-
-  return statusMap[nbStatus.toLowerCase()] || 'upcoming';
-}
-
-/**
- * Map NewBook category names to our internal booking_type values.
- *
- * @param categoryName - Category from NewBook
- * @returns Portal booking type
- */
-function mapBookingType(categoryName: string | null): Booking['booking_type'] {
-  if (!categoryName) return 'other';
-
-  // TODO: Adjust these mappings based on actual NewBook category names
-  const lower = categoryName.toLowerCase();
-  if (lower.includes('rv') || lower.includes('caravan')) return 'rv';
-  if (lower.includes('motel') || lower.includes('hotel')) return 'motel';
-  if (lower.includes('cabin') || lower.includes('cottage')) return 'cabin';
-  if (lower.includes('mobile') || lower.includes('manufactured')) return 'mobile_home';
+function mapBookingType(b: NewBookBooking): Booking['booking_type'] {
+  const hay = `${b.category_name ?? ''} ${b.site_name ?? ''}`.toLowerCase();
+  if (/(cabin|cottage)/.test(hay)) return 'cabin';
+  if (/(mobile|manufactured)/.test(hay)) return 'mobile_home';
+  if (/(room|motel|queen|king|suite)/.test(hay)) return 'motel';
+  if (/(site|rv|caravan|powered|pull|back-in)/.test(hay)) return 'rv';
   return 'other';
 }
 
 /**
- * Map a NewBook booking record to our internal Booking type.
- *
- * Note: `id`, `property_id`, `guest_id` (portal IDs) must be
- * resolved by the caller since NewBook uses its own ID system.
- *
- * @param nbBooking - Booking data from NewBook API
- * @returns Partial Booking object (missing portal-only fields)
+ * Newbook has no portal-style "invoice" object; a booking's money is
+ * spread across `tariffs_quoted` (nightly), `inventory_items` (fees)
+ * and `discounts`. We fold those into a single invoice per booking so
+ * the portal's invoice/balance UI has something real to render.
  */
-export function mapNewBookBookingToBooking(
-  nbBooking: NewBookBooking
-): Omit<Booking, 'id' | 'property_id' | 'guest_id' | 'created_at'> {
+function deriveInvoice(
+  b: NewBookBooking,
+  portalIds: { property_id: string; guest_id: string }
+): Invoice {
+  const lineItems: InvoiceLineItem[] = [];
+
+  // Nightly tariffs, grouped by label.
+  const byLabel = new Map<string, { qty: number; unit: number; total: number }>();
+  for (const t of b.tariffs_quoted ?? []) {
+    const amt = num(t.charge_amount);
+    const g = byLabel.get(t.label) ?? { qty: 0, unit: amt, total: 0 };
+    g.qty += 1;
+    g.total += amt;
+    byLabel.set(t.label, g);
+  }
+  for (const [label, g] of byLabel) {
+    lineItems.push({
+      description: `${label}${g.qty > 1 ? ` — ${g.qty} nights` : ''}`,
+      quantity: g.qty,
+      unit_price: g.unit,
+      total: Number(g.total.toFixed(2)),
+    });
+  }
+
+  // Fees / extras.
+  for (const item of b.inventory_items ?? []) {
+    lineItems.push({
+      description: item.description || item.name,
+      quantity: 1,
+      unit_price: num(item.amount),
+      total: num(item.amount),
+    });
+  }
+
+  // Discounts (negative line).
+  const discountTotal = num(b.discount_total);
+  if (discountTotal > 0) {
+    lineItems.push({
+      description: 'Discount',
+      quantity: 1,
+      unit_price: -discountTotal,
+      total: -discountTotal,
+    });
+  }
+
+  const amount = num(b.booking_total);
+  const balance = num(b.account_balance);
+  const departed = !!b.booking_checkedout || b.booking_status === 'Departed';
+
+  let status: InvoiceStatus;
+  if (balance <= 0) status = 'paid';
+  else if (new Date(toIso(b.booking_departure)) < new Date() && !departed)
+    status = 'overdue';
+  else if (balance < amount) status = 'partial';
+  else status = 'pending';
+
   return {
-    newbook_booking_id: String(nbBooking.booking_id),
-    status: mapBookingStatus(nbBooking.status),
-    // NewBook "arrival_date" -> portal "check_in"
-    check_in: nbBooking.arrival_date,
-    // NewBook "departure_date" -> portal "check_out"
-    check_out: nbBooking.departure_date,
-    // NewBook "site_name" -> portal "site_or_room"
-    site_or_room: nbBooking.site_name,
-    booking_type: mapBookingType(nbBooking.category_name),
-    group_booking_id: nbBooking.group_id ? String(nbBooking.group_id) : null,
-    // NewBook "total_charge" -> portal "total_amount"
-    total_amount: nbBooking.total_charge,
-    // NewBook "balance_owing" -> portal "balance_due"
-    balance_due: nbBooking.balance_owing,
+    id: invoicePortalId(b.booking_id),
+    booking_id: bookingPortalId(b.booking_id),
+    property_id: portalIds.property_id,
+    guest_id: portalIds.guest_id,
+    newbook_invoice_id: String(b.booking_id),
+    amount,
+    status,
+    due_date: toIso(b.booking_arrival) || null,
+    paid_at: status === 'paid' ? toIso(b.booking_modified) || null : null,
+    description:
+      `${b.site_name ?? b.category_name ?? 'Stay'}` +
+      ` — ${b.booking_arrival.slice(0, 10)} to ${b.booking_departure.slice(0, 10)}`,
+    line_items: lineItems,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+/** Map a Newbook booking to a fully-populated portal Booking. */
+export function mapBooking(
+  b: NewBookBooking,
+  property: Property,
+  opts: { guestId?: string } = {}
+): Booking {
+  const lead = primaryGuest(b);
+  const guest_id =
+    opts.guestId ?? guestPortalId(lead?.guest_id ?? 'unknown');
+  const invoice = deriveInvoice(b, {
+    property_id: property.id,
+    guest_id,
+  });
+
+  return {
+    id: bookingPortalId(b.booking_id),
+    property_id: property.id,
+    guest_id,
+    newbook_booking_id: String(b.booking_id),
+    status: mapBookingStatus(b),
+    check_in: toIso(b.booking_arrival),
+    check_out: toIso(b.booking_departure),
+    site_or_room: b.site_name ?? b.category_name ?? null,
+    booking_type: mapBookingType(b),
+    group_booking_id: b.bookings_group_id
+      ? String(b.bookings_group_id)
+      : null,
+    total_amount: num(b.booking_total),
+    balance_due: num(b.account_balance),
     details: {
-      adults: nbBooking.adults,
-      children: nbBooking.children,
-      comments: nbBooking.comments,
-      extras: nbBooking.extras,
+      adults: num(b.booking_adults),
+      children: num(b.booking_children),
+      infants: num(b.booking_infants),
+      animals: num(b.booking_animals),
+      category: b.category_name ?? undefined,
+      newbook_status: b.booking_status,
+      cancelled_reason: b.booking_cancelled_reason_name ?? undefined,
+      equipment: lead?.equipment?.map((e) => ({
+        name: e.equipment_name,
+        make: e.equipment_make,
+        model: e.equipment_model,
+        length: e.equipment_length,
+        unit: e.equipment_measurement_unit,
+      })),
     },
     synced_at: new Date().toISOString(),
-  };
-}
-
-/**
- * Map our internal Booking type to a NewBook booking record for API push.
- *
- * Used when modifying bookings via the NewBook API.
- *
- * @param booking - Portal booking data
- * @returns Partial NewBook booking object for API submission
- */
-export function mapBookingToNewBookBooking(booking: Booking): Partial<NewBookBooking> {
-  // TODO: Determine which fields are writable via NewBook API
-  // Most booking modifications will likely be limited to dates
-  // and specific fields rather than full record updates.
-
-  return {
-    // Portal "check_in" -> NewBook "arrival_date"
-    arrival_date: booking.check_in,
-    // Portal "check_out" -> NewBook "departure_date"
-    departure_date: booking.check_out,
-    // Portal "site_or_room" -> NewBook "site_name"
-    site_name: booking.site_or_room,
-    comments: (booking.details?.comments as string) || null,
-    // TODO: Map other writable fields
-  };
-}
-
-// --- Invoice Mappers ---
-
-/**
- * Map NewBook invoice status strings to our internal InvoiceStatus.
- *
- * NewBook uses: "open", "closed", "void"
- * Portal uses: "pending", "paid", "overdue", "partial"
- *
- * @param nbStatus - Status string from NewBook
- * @param balanceOwing - Remaining balance for partial detection
- * @param dueDate - Due date for overdue detection
- * @returns Portal InvoiceStatus value
- */
-function mapInvoiceStatus(
-  nbStatus: string,
-  balanceOwing: number,
-  dueDate: string | null
-): InvoiceStatus {
-  // TODO: Verify exact status strings from NewBook API
-  if (nbStatus.toLowerCase() === 'closed' || balanceOwing <= 0) {
-    return 'paid';
-  }
-
-  if (balanceOwing > 0 && dueDate) {
-    const due = new Date(dueDate);
-    if (due < new Date()) {
-      return 'overdue';
-    }
-  }
-
-  // Check if partially paid
-  // (balance_owing > 0 but amount_paid > 0 implies partial)
-  return 'pending';
-}
-
-/**
- * Map a NewBook invoice line item to our internal format.
- *
- * @param nbLineItem - Line item from NewBook
- * @returns Portal InvoiceLineItem
- */
-function mapLineItem(nbLineItem: NewBookInvoiceLineItem): InvoiceLineItem {
-  return {
-    description: nbLineItem.description,
-    quantity: nbLineItem.quantity,
-    // NewBook "unit_amount" -> portal "unit_price"
-    unit_price: nbLineItem.unit_amount,
-    // NewBook "total_amount" -> portal "total"
-    total: nbLineItem.total_amount,
-  };
-}
-
-/**
- * Map a NewBook invoice record to our internal Invoice type.
- *
- * Note: `id`, `property_id`, `booking_id`, `guest_id` (portal IDs)
- * must be resolved by the caller.
- *
- * @param nbInvoice - Invoice data from NewBook API
- * @returns Partial Invoice object (missing portal-only fields)
- */
-export function mapNewBookInvoiceToInvoice(
-  nbInvoice: NewBookInvoice
-): Omit<Invoice, 'id' | 'booking_id' | 'property_id' | 'guest_id'> {
-  return {
-    newbook_invoice_id: String(nbInvoice.invoice_id),
-    amount: nbInvoice.total_amount,
-    status: mapInvoiceStatus(nbInvoice.status, nbInvoice.balance_owing, nbInvoice.due_date),
-    due_date: nbInvoice.due_date,
-    // NewBook "date_paid" -> portal "paid_at"
-    paid_at: nbInvoice.date_paid,
-    description: nbInvoice.description,
-    line_items: nbInvoice.line_items.map(mapLineItem),
-    synced_at: new Date().toISOString(),
+    created_at: toIso(b.booking_placed) || new Date().toISOString(),
+    property,
+    invoices: [invoice],
   };
 }

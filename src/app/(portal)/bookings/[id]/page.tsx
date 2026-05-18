@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import {
@@ -22,12 +22,13 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
+import { Spinner } from "@/components/ui/spinner";
 import type {
   Booking,
   BookingStatus,
   Invoice,
   InvoiceStatus,
-  Property,
+  ApiResponse,
 } from "@/types/index";
 
 // ─── Status helpers ──────────────────────────────────────────
@@ -60,258 +61,47 @@ const bookingTypeLabels: Record<string, string> = {
 };
 
 const ADDON_OPTIONS = [
-  { label: "Select an add-on...", value: "" },
   { label: "Propane Delivery", value: "propane_delivery" },
   { label: "Early Check-in", value: "early_checkin" },
   { label: "Late Checkout", value: "late_checkout" },
   { label: "Extra Cleaning", value: "extra_cleaning" },
 ];
 
-// ─── Mock Data (same bookings as listing) ────────────────────
-const MOCK_PROPERTY: Property = {
-  id: "prop-1",
-  name: "Lakeside RV Resort",
-  slug: "lakeside-rv",
-  newbook_instance_url: null,
-  newbook_api_key: null,
-  timezone: "America/Chicago",
-  cancellation_policy: {
-    refund_eligible: true,
-    cutoff_days: 7,
-    policy_text:
-      "Full refund if cancelled 7+ days before check-in. 50% refund within 3-7 days. No refund within 3 days.",
-  },
-  features_enabled: {
-    check_in: true,
-    food_trucks: true,
-    local_guide: true,
-    push_notifications: true,
-    add_ons: true,
-    document_uploads: true,
-  },
-  contact_info: {
-    phone: "(555) 123-4567",
-    email: "info@lakesiderv.com",
-  },
-  smart_lock_provider: null,
-  smart_lock_config: {},
-  branding: {},
-  created_at: "2025-01-01T00:00:00Z",
-};
-
-const MOCK_BOOKINGS: Record<string, Booking> = {
-  "bk-001": {
-    id: "bk-001",
-    property_id: "prop-1",
-    guest_id: "guest-1",
-    newbook_booking_id: "NB-1001",
-    status: "upcoming",
-    check_in: "2026-05-10T15:00:00Z",
-    check_out: "2026-05-17T11:00:00Z",
-    site_or_room: "RV Site #42",
-    booking_type: "rv",
-    group_booking_id: null,
-    total_amount: 595.0,
-    balance_due: 297.5,
-    details: {},
-    synced_at: "2026-04-10T12:00:00Z",
-    created_at: "2026-03-01T10:00:00Z",
-    property: MOCK_PROPERTY,
-    invoices: [
-      {
-        id: "inv-001",
-        booking_id: "bk-001",
-        property_id: "prop-1",
-        guest_id: "guest-1",
-        newbook_invoice_id: null,
-        amount: 297.5,
-        status: "paid",
-        due_date: "2026-03-15T00:00:00Z",
-        paid_at: "2026-03-14T09:30:00Z",
-        description: "Deposit - RV Site #42",
-        line_items: [
-          {
-            description: "Site rental deposit",
-            quantity: 1,
-            unit_price: 297.5,
-            total: 297.5,
-          },
-        ],
-        synced_at: "2026-04-10T12:00:00Z",
-      },
-      {
-        id: "inv-002",
-        booking_id: "bk-001",
-        property_id: "prop-1",
-        guest_id: "guest-1",
-        newbook_invoice_id: null,
-        amount: 297.5,
-        status: "pending",
-        due_date: "2026-05-01T00:00:00Z",
-        paid_at: null,
-        description: "Balance - RV Site #42",
-        line_items: [
-          {
-            description: "Remaining site rental",
-            quantity: 1,
-            unit_price: 297.5,
-            total: 297.5,
-          },
-        ],
-        synced_at: "2026-04-10T12:00:00Z",
-      },
-    ],
-  },
-  "bk-002": {
-    id: "bk-002",
-    property_id: "prop-1",
-    guest_id: "guest-1",
-    newbook_booking_id: "NB-1002",
-    status: "upcoming",
-    check_in: "2026-06-20T15:00:00Z",
-    check_out: "2026-06-27T11:00:00Z",
-    site_or_room: "Cabin 7 - Lakeview",
-    booking_type: "cabin",
-    group_booking_id: null,
-    total_amount: 1190.0,
-    balance_due: 1190.0,
-    details: {},
-    synced_at: "2026-04-10T12:00:00Z",
-    created_at: "2026-04-05T14:00:00Z",
-    property: MOCK_PROPERTY,
-    invoices: [
-      {
-        id: "inv-003",
-        booking_id: "bk-002",
-        property_id: "prop-1",
-        guest_id: "guest-1",
-        newbook_invoice_id: null,
-        amount: 1190.0,
-        status: "pending",
-        due_date: "2026-06-10T00:00:00Z",
-        paid_at: null,
-        description: "Full stay - Cabin 7",
-        line_items: [
-          {
-            description: "Cabin rental (7 nights)",
-            quantity: 7,
-            unit_price: 170.0,
-            total: 1190.0,
-          },
-        ],
-        synced_at: "2026-04-10T12:00:00Z",
-      },
-    ],
-  },
-  "bk-003": {
-    id: "bk-003",
-    property_id: "prop-1",
-    guest_id: "guest-1",
-    newbook_booking_id: "NB-1003",
-    status: "checked_in",
-    check_in: "2026-04-12T15:00:00Z",
-    check_out: "2026-04-19T11:00:00Z",
-    site_or_room: "RV Site #18 - Pull-through",
-    booking_type: "rv",
-    group_booking_id: null,
-    total_amount: 490.0,
-    balance_due: 0,
-    details: {},
-    synced_at: "2026-04-12T15:30:00Z",
-    created_at: "2026-03-20T08:00:00Z",
-    property: MOCK_PROPERTY,
-    invoices: [
-      {
-        id: "inv-004",
-        booking_id: "bk-003",
-        property_id: "prop-1",
-        guest_id: "guest-1",
-        newbook_invoice_id: null,
-        amount: 490.0,
-        status: "paid",
-        due_date: "2026-04-01T00:00:00Z",
-        paid_at: "2026-03-30T10:15:00Z",
-        description: "Full stay - RV Site #18",
-        line_items: [
-          {
-            description: "Site rental (7 nights)",
-            quantity: 7,
-            unit_price: 70.0,
-            total: 490.0,
-          },
-        ],
-        synced_at: "2026-04-10T12:00:00Z",
-      },
-    ],
-  },
-  "bk-004": {
-    id: "bk-004",
-    property_id: "prop-1",
-    guest_id: "guest-1",
-    newbook_booking_id: "NB-1004",
-    status: "checked_out",
-    check_in: "2026-02-14T15:00:00Z",
-    check_out: "2026-02-21T11:00:00Z",
-    site_or_room: "Motel Room 12",
-    booking_type: "motel",
-    group_booking_id: null,
-    total_amount: 665.0,
-    balance_due: 0,
-    details: {},
-    synced_at: "2026-02-21T12:00:00Z",
-    created_at: "2026-01-15T16:00:00Z",
-    property: MOCK_PROPERTY,
-    invoices: [
-      {
-        id: "inv-005",
-        booking_id: "bk-004",
-        property_id: "prop-1",
-        guest_id: "guest-1",
-        newbook_invoice_id: null,
-        amount: 665.0,
-        status: "paid",
-        due_date: "2026-02-01T00:00:00Z",
-        paid_at: "2026-01-30T11:00:00Z",
-        description: "Full stay - Motel Room 12",
-        line_items: [
-          {
-            description: "Room rental (7 nights)",
-            quantity: 7,
-            unit_price: 95.0,
-            total: 665.0,
-          },
-        ],
-        synced_at: "2026-02-21T12:00:00Z",
-      },
-    ],
-  },
-  "bk-005": {
-    id: "bk-005",
-    property_id: "prop-1",
-    guest_id: "guest-1",
-    newbook_booking_id: "NB-1005",
-    status: "cancelled",
-    check_in: "2026-03-05T15:00:00Z",
-    check_out: "2026-03-10T11:00:00Z",
-    site_or_room: "RV Site #31",
-    booking_type: "rv",
-    group_booking_id: null,
-    total_amount: 350.0,
-    balance_due: 0,
-    details: {},
-    synced_at: "2026-03-01T09:00:00Z",
-    created_at: "2026-02-10T12:00:00Z",
-    property: MOCK_PROPERTY,
-    invoices: [],
-  },
-};
-
 // ─── Page ────────────────────────────────────────────────────
 export default function BookingDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
 
-  const booking = MOCK_BOOKINGS[params.id];
+  const [booking, setBooking] = useState<Booking | null>(null);
+  const [loadState, setLoadState] = useState<
+    "loading" | "loaded" | "notfound" | "error"
+  >("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/bookings/${params.id}`);
+        const json: ApiResponse<Booking> = await res.json();
+        if (cancelled) return;
+        if (res.status === 404) {
+          setLoadState("notfound");
+          return;
+        }
+        if (json.error || !json.data) {
+          setLoadState("error");
+          return;
+        }
+        setBooking(json.data);
+        setLoadState("loaded");
+      } catch {
+        if (!cancelled) setLoadState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
 
   // Extend stay
   const [showExtend, setShowExtend] = useState(false);
@@ -327,22 +117,31 @@ export default function BookingDetailPage() {
   const [selectedAddon, setSelectedAddon] = useState("");
   const [addonSubmitted, setAddonSubmitted] = useState(false);
 
-  if (!booking) {
+  if (loadState === "loading") {
     return (
-      <div className="mx-auto max-w-2xl">
-        <button
-          onClick={() => router.push("/bookings")}
-          className="flex items-center gap-1.5 text-sm font-medium text-gold-700 hover:text-gold-800 transition-colors min-h-[44px]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Bookings
-        </button>
+      <div className="mx-auto max-w-3xl">
+        <BackButton onClick={() => router.push("/bookings")} />
+        <div className="mt-12 flex justify-center">
+          <Spinner />
+        </div>
+      </div>
+    );
+  }
+
+  if (loadState !== "loaded" || !booking) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <BackButton onClick={() => router.push("/bookings")} />
         <div className="mt-12 text-center">
           <p className="text-base font-semibold text-sand-900">
-            Booking not found
+            {loadState === "notfound"
+              ? "Booking not found"
+              : "Couldn't load this booking"}
           </p>
           <p className="mt-1 text-sm text-sand-500">
-            This booking may have been removed or the link is incorrect.
+            {loadState === "notfound"
+              ? "This booking may have been removed or the link is incorrect."
+              : "There was a problem reaching the booking service. Please try again."}
           </p>
         </div>
       </div>
@@ -353,31 +152,9 @@ export default function BookingDetailPage() {
   const isActive =
     booking.status === "upcoming" || booking.status === "checked_in";
 
-  function handleExtendSubmit() {
-    setExtendSubmitted(true);
-    // In production: call API to extend stay
-  }
-
-  function handleCancelConfirm() {
-    setCancelConfirmed(true);
-    // In production: call API to cancel booking
-  }
-
-  function handleAddonSubmit() {
-    setAddonSubmitted(true);
-    // In production: call API to request add-on
-  }
-
   return (
-    <div className="mx-auto max-w-2xl">
-      {/* Back button */}
-      <button
-        onClick={() => router.push("/bookings")}
-        className="flex items-center gap-1.5 text-sm font-medium text-gold-700 hover:text-gold-800 transition-colors min-h-[44px]"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Bookings
-      </button>
+    <div className="mx-auto max-w-3xl">
+      <BackButton onClick={() => router.push("/bookings")} />
 
       {/* ── Header ── */}
       <div className="mt-4 flex items-center gap-3 flex-wrap">
@@ -407,12 +184,18 @@ export default function BookingDetailPage() {
           <InfoRow
             icon={CalendarDays}
             label="Check-in"
-            value={format(parseISO(booking.check_in), "EEE, MMM d, yyyy 'at' h:mm a")}
+            value={format(
+              parseISO(booking.check_in),
+              "EEE, MMM d, yyyy 'at' h:mm a",
+            )}
           />
           <InfoRow
             icon={CalendarDays}
             label="Check-out"
-            value={format(parseISO(booking.check_out), "EEE, MMM d, yyyy 'at' h:mm a")}
+            value={format(
+              parseISO(booking.check_out),
+              "EEE, MMM d, yyyy 'at' h:mm a",
+            )}
           />
           <InfoRow
             icon={Home}
@@ -428,7 +211,7 @@ export default function BookingDetailPage() {
       <section className="mt-6">
         <h2 className="text-base font-semibold text-gray-900">Invoices</h2>
 
-        {(!booking.invoices || booking.invoices.length === 0) ? (
+        {!booking.invoices || booking.invoices.length === 0 ? (
           <p className="mt-3 text-sm text-sand-500">
             No invoices for this booking.
           </p>
@@ -521,7 +304,7 @@ export default function BookingDetailPage() {
               </Button>
               <Button
                 disabled={!newCheckout}
-                onClick={handleExtendSubmit}
+                onClick={() => setExtendSubmitted(true)}
               >
                 Confirm Extension
               </Button>
@@ -572,7 +355,10 @@ export default function BookingDetailPage() {
               <Button variant="ghost" onClick={() => setShowCancel(false)}>
                 Keep Booking
               </Button>
-              <Button variant="danger" onClick={handleCancelConfirm}>
+              <Button
+                variant="danger"
+                onClick={() => setCancelConfirmed(true)}
+              >
                 Confirm Cancellation
               </Button>
             </div>
@@ -635,7 +421,7 @@ export default function BookingDetailPage() {
               </Button>
               <Button
                 disabled={!selectedAddon}
-                onClick={handleAddonSubmit}
+                onClick={() => setAddonSubmitted(true)}
               >
                 Submit Request
               </Button>
@@ -666,7 +452,7 @@ export default function BookingDetailPage() {
               label="Add-on Type"
               value={selectedAddon}
               onChange={(e) => setSelectedAddon(e.target.value)}
-              options={ADDON_OPTIONS.slice(1)}
+              options={ADDON_OPTIONS}
               placeholder="Select an add-on..."
             />
           </div>
@@ -677,6 +463,18 @@ export default function BookingDetailPage() {
 }
 
 // ─── Sub-components ──────────────────────────────────────────
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 text-sm font-medium text-gold-700 hover:text-gold-800 transition-colors min-h-[44px]"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      Back to Bookings
+    </button>
+  );
+}
+
 function InfoRow({
   icon: Icon,
   label,

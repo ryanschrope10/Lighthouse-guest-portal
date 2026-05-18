@@ -217,7 +217,7 @@ export default function PaymentsPage() {
   const hasBalance = totalBalanceDue > 0;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       {/* Page Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">
