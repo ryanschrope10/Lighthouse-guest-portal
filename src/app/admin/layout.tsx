@@ -12,6 +12,11 @@ import {
   ArrowLeft,
   Menu,
   X,
+  Calendar,
+  Star,
+  ShoppingBag,
+  Inbox,
+  Lock,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -19,7 +24,12 @@ import clsx from "clsx";
 
 const adminNav = [
   { href: "/admin", label: "Dashboard / Analytics", icon: LayoutDashboard },
+  { href: "/admin/requests", label: "Guest Requests", icon: Inbox },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },
+  { href: "/admin/events", label: "Events & Schedules", icon: Calendar },
+  { href: "/admin/reviews", label: "Reviews & Feedback", icon: Star },
+  { href: "/admin/addons", label: "Add-ons Catalog", icon: ShoppingBag },
+  { href: "/admin/lock-codes", label: "Lock Codes", icon: Lock },
   { href: "/admin/content", label: "Content Management", icon: FileText },
   { href: "/admin/properties", label: "Properties", icon: Building2 },
   { href: "/admin/documents", label: "Guest Documents", icon: ShieldCheck },

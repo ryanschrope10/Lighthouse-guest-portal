@@ -1,17 +1,12 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { sql } from '@/lib/db';
+import { requireGuest } from '@/lib/session';
 import type { ApiResponse } from '@/types';
+import type { AddonRequestRow } from '@/types/addons';
 
-interface ExtendStayRequest {
+interface ExtendStayBody {
   new_check_out: string;
-}
-
-interface ExtendStayResponse {
-  booking_id: string;
-  original_check_out: string;
-  new_check_out: string;
-  additional_amount: number;
-  status: 'pending_confirmation' | 'confirmed';
 }
 
 export async function POST(
@@ -19,18 +14,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const guest = await requireGuest();
 
-    if (!user) {
-      return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const { id } = await params;
-    const body: ExtendStayRequest = await request.json();
+    const { id: bookingId } = await params;
+    const body: ExtendStayBody = await request.json();
 
     if (!body.new_check_out) {
       return NextResponse.json<ApiResponse<null>>(
@@ -38,40 +25,130 @@ export async function POST(
         { status: 400 }
       );
     }
-
     const newCheckOut = new Date(body.new_check_out);
     if (isNaN(newCheckOut.getTime())) {
       return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: 'Invalid date format for new_check_out' },
+        { data: null, error: 'Invalid new_check_out date' },
         { status: 400 }
       );
     }
 
-    // TODO: Replace with real logic
-    // 1. Fetch booking to verify ownership and current check_out
-    // 2. Validate new_check_out is after current check_out
-    // 3. Check availability via NewBook API
-    // 4. Call NewBook API to extend booking
-    // 5. Update local booking record
-    // 6. Create new invoice for additional nights
+    const bookingRows = (await sql`
+      select id, property_id, guest_id, check_out, site_or_room
+      from bookings
+      where id = ${bookingId}
+      limit 1
+    `) as Array<{
+      id: string;
+      property_id: string;
+      guest_id: string;
+      check_out: string;
+      site_or_room: string | null;
+    }>;
+    if (bookingRows.length === 0 || bookingRows[0].guest_id !== guest.id) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'Booking not found' },
+        { status: 404 }
+      );
+    }
+    const booking = bookingRows[0];
 
-    const mockResponse: ExtendStayResponse = {
-      booking_id: id,
-      original_check_out: '2025-06-15T11:00:00Z',
-      new_check_out: body.new_check_out,
-      additional_amount: 150.0,
-      status: 'pending_confirmation',
+    const currentCheckOut = parseISO(booking.check_out);
+    if (newCheckOut <= currentCheckOut) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'new_check_out must be after current check-out' },
+        { status: 400 }
+      );
+    }
+
+    const catalogRows = (await sql`
+      select id, slug, name, price_cents, requires_approval, active
+      from addon_catalog
+      where property_id = ${booking.property_id} and slug = 'stay_extension'
+      limit 1
+    `) as Array<{
+      id: string;
+      slug: string;
+      name: string;
+      price_cents: number;
+      requires_approval: boolean;
+      active: boolean;
+    }>;
+    if (catalogRows.length === 0 || !catalogRows[0].active) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'Stay extension is not offered for this property' },
+        { status: 400 }
+      );
+    }
+    const catalog = catalogRows[0];
+
+    // Conflict = another booking starts on or before requested new check-out on same site.
+    let hasConflict = false;
+    if (booking.site_or_room) {
+      const conflicts = (await sql`
+        select id, check_in from bookings
+        where property_id = ${booking.property_id}
+          and site_or_room = ${booking.site_or_room}
+          and id <> ${booking.id}
+          and check_in >= ${currentCheckOut.toISOString()}
+          and check_in < ${newCheckOut.toISOString()}
+          and status = any(${['confirmed', 'upcoming', 'checked_in']})
+      `) as Array<{ id: string }>;
+      hasConflict = conflicts.length > 0;
+    }
+
+    const extraNights = Math.max(
+      1,
+      differenceInCalendarDays(newCheckOut, currentCheckOut)
+    );
+    const priceCents = catalog.price_cents * extraNights;
+    const status = hasConflict ? 'pending' : 'auto_approved';
+
+    const details = {
+      has_conflict: hasConflict,
+      requires_room_move: hasConflict,
+      original_check_out: booking.check_out,
+      extra_nights: extraNights,
     };
 
-    return NextResponse.json<ApiResponse<ExtendStayResponse>>(
-      { data: mockResponse, error: null },
-      { status: 200 }
+    const inserted = (await sql`
+      insert into addon_requests (
+        booking_id, guest_id, property_id, addon_catalog_id, addon_type,
+        quantity, price_cents, status, payment_status, scheduled_for, details
+      )
+      values (
+        ${bookingId}, ${guest.id}, ${booking.property_id}, ${catalog.id}, ${catalog.slug},
+        ${extraNights}, ${priceCents}, ${status},
+        ${priceCents === 0 ? 'waived' : 'unpaid'},
+        ${newCheckOut.toISOString()},
+        ${JSON.stringify(details)}::jsonb
+      )
+      returning *
+    `) as Array<AddonRequestRow>;
+
+    await sql`
+      insert into notifications (property_id, target_type, target_id, title, body, channel)
+      values (
+        ${booking.property_id}, 'admin', ${booking.property_id},
+        ${hasConflict
+          ? 'Stay extension requested (conflict — may need room move)'
+          : 'Stay extension auto-approved'},
+        ${`+${extraNights} night(s) on ${booking.site_or_room ?? 'n/a'} to ${newCheckOut.toISOString().slice(0, 10)}`},
+        'push'
+      )
+    `;
+
+    return NextResponse.json<ApiResponse<AddonRequestRow>>(
+      { data: inserted[0], error: null },
+      { status: 201 }
     );
   } catch (error) {
-    console.error('POST /api/bookings/[id]/extend error:', error);
+    const msg = error instanceof Error ? error.message : 'Internal server error';
+    const status = msg === 'Unauthorized' ? 401 : msg.includes('Forbidden') ? 403 : 500;
+    if (status === 500) console.error('POST /api/bookings/[id]/extend error:', error);
     return NextResponse.json<ApiResponse<null>>(
-      { data: null, error: 'Internal server error' },
-      { status: 500 }
+      { data: null, error: msg },
+      { status }
     );
   }
 }

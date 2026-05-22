@@ -17,6 +17,7 @@ import {
   Banknote,
   Bell,
   AlertCircle,
+  Calendar,
 } from "lucide-react";
 
 import { Card, CardBody } from "@/components/ui/card";
@@ -39,6 +40,73 @@ interface ActivityItem {
   title: string;
   description: string;
   timestamp: string;
+}
+
+interface UpcomingEvent {
+  id: string;
+  title: string;
+  body?: string | null;
+  location?: string | null;
+  starts_at?: string | null;
+  external_url?: string | null;
+  type?: string | null;
+}
+
+function UpcomingEventsCard() {
+  const [events, setEvents] = useState<UpcomingEvent[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/events?upcoming=true&limit=3")
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((j) => {
+        if (cancelled) return;
+        setEvents(Array.isArray(j?.data) ? j.data : []);
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (!loaded || events.length === 0) return null;
+  return (
+    <Card>
+      <CardBody>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs font-medium uppercase tracking-wide text-sand-500">
+            Coming Up
+          </p>
+          <Link
+            href="/events"
+            className="text-xs font-medium text-gold-700 hover:text-gold-800"
+          >
+            View all
+          </Link>
+        </div>
+        <ul className="space-y-3">
+          {events.map((e) => (
+            <li key={e.id} className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gold-50">
+                <Calendar className="h-4 w-4 text-gold-700" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-900">
+                  {e.title}
+                </p>
+                <p className="truncate text-xs text-sand-600">
+                  {e.starts_at
+                    ? format(new Date(e.starts_at), "EEE, MMM d · h:mm a")
+                    : "Schedule TBD"}
+                  {e.location ? ` · ${e.location}` : ""}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </CardBody>
+    </Card>
+  );
 }
 
 function ActivityIcon({ type }: { type: ActivityItem["type"] }) {
@@ -343,6 +411,9 @@ export default function DashboardPage() {
           </CardBody>
         </Card>
       )}
+
+      {/* Upcoming onsite events / food truck schedule */}
+      <UpcomingEventsCard />
 
       {/* Explore the area */}
       {guide && <LocalGuide guide={guide} />}

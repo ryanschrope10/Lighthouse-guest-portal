@@ -23,6 +23,13 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { Spinner } from "@/components/ui/spinner";
+import { ReviewFlow } from "@/components/reviews/review-flow";
+import { RequestLateCheckout } from "@/components/addons/request-late-checkout";
+import { RequestExtension } from "@/components/addons/request-extension";
+import { AddonMarketplace } from "@/components/addons/addon-marketplace";
+import { LockCodeCard } from "@/components/lock-codes/lock-code-card";
+import { CheckinReminder } from "@/components/lock-codes/checkin-reminder";
+import { SignatureStatusCard } from "@/components/signature-status/signature-status-card";
 import type {
   Booking,
   BookingStatus,
@@ -168,6 +175,12 @@ export default function BookingDetailPage() {
         {booking.property?.name ?? "Property"}
       </h1>
 
+      <div className="mt-4 space-y-3">
+        <CheckinReminder booking={booking} />
+        <SignatureStatusCard booking={booking} />
+        <LockCodeCard booking={booking} />
+      </div>
+
       {/* ── Booking Info ── */}
       <Card className="mt-5">
         <CardBody className="space-y-3">
@@ -249,6 +262,12 @@ export default function BookingDetailPage() {
         </CardBody>
       </Card>
 
+      {booking.status === "checked_out" && (
+        <div className="mt-6">
+          <ReviewFlow bookingId={booking.id} title="How was your stay?" />
+        </div>
+      )}
+
       {/* ── Actions ── */}
       {isActive && (
         <section className="mt-6">
@@ -288,6 +307,23 @@ export default function BookingDetailPage() {
               Request Add-on
             </Button>
           </div>
+        </section>
+      )}
+
+      {isActive && (
+        <section className="mt-6 space-y-3">
+          <h2 className="text-base font-semibold text-gray-900">
+            Add-ons & Requests
+          </h2>
+          <RequestLateCheckout
+            bookingId={booking.id}
+            checkOutIso={booking.check_out}
+          />
+          <RequestExtension
+            bookingId={booking.id}
+            checkOutIso={booking.check_out}
+          />
+          <AddonMarketplace bookingId={booking.id} />
         </section>
       )}
 

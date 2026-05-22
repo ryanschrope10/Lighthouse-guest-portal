@@ -18,6 +18,7 @@ import type {
   InvoiceLineItem,
   Property,
 } from '@/types/index';
+import type { SignatureInfo, SignatureStatus } from '@/types/signature';
 
 import type { NewBookBooking, NewBookGuest } from './types';
 
@@ -166,6 +167,75 @@ function deriveInvoice(
   };
 }
 
+// Newbook field names for the rules & regs signature flow are not
+// confirmed yet; we read several likely shapes and surface whatever
+// we find. TODO: Pin these to real Newbook keys once verified
+// against a booking that has actually been signed.
+function mapSignatureInfo(b: NewBookBooking): SignatureInfo {
+  const raw = b as unknown as Record<string, unknown>;
+
+  const explicit =
+    (typeof raw.signature_status === 'string' && raw.signature_status) ||
+    (typeof raw.signed_status === 'string' && raw.signed_status) ||
+    null;
+
+  const url =
+    (typeof raw.signed_document_url === 'string' && raw.signed_document_url) ||
+    (typeof raw.signature_document_url === 'string' &&
+      raw.signature_document_url) ||
+    (typeof raw.signature_url === 'string' && raw.signature_url) ||
+    null;
+
+  const signedAtRaw =
+    (typeof raw.signed_at === 'string' && raw.signed_at) ||
+    (typeof raw.signature_signed_at === 'string' && raw.signature_signed_at) ||
+    null;
+
+  // TODO: confirm whether Newbook nests this under `documents: [...]`
+  // with type/category=='rules_and_regs' rather than top-level fields.
+  const docs = Array.isArray(raw.documents)
+    ? (raw.documents as Array<Record<string, unknown>>)
+    : null;
+  const rulesDoc = docs?.find((d) => {
+    const t = String(d.type ?? d.category ?? d.name ?? '').toLowerCase();
+    return /rules|regulation|terms|agreement/.test(t);
+  });
+  const docUrl =
+    url ??
+    (rulesDoc && typeof rulesDoc.url === 'string' ? rulesDoc.url : null) ??
+    (rulesDoc && typeof rulesDoc.signed_url === 'string'
+      ? rulesDoc.signed_url
+      : null);
+  const docSignedAt =
+    signedAtRaw ??
+    (rulesDoc && typeof rulesDoc.signed_at === 'string'
+      ? rulesDoc.signed_at
+      : null);
+  const docStatus =
+    explicit ??
+    (rulesDoc && typeof rulesDoc.status === 'string'
+      ? rulesDoc.status
+      : null);
+
+  let status: SignatureStatus;
+  const norm = docStatus?.toLowerCase() ?? '';
+  if (/signed|complete|done/.test(norm) || docSignedAt) {
+    status = 'signed';
+  } else if (/pending|required|awaiting|unsigned/.test(norm) || docUrl) {
+    status = 'pending';
+  } else {
+    // TODO: default once Newbook's signature flow is confirmed —
+    // for now assume the property doesn't require a signature.
+    status = 'not_required';
+  }
+
+  return {
+    signature_status: status,
+    signature_signed_at: docSignedAt ? toIso(docSignedAt) : null,
+    signature_document_url: docUrl,
+  };
+}
+
 /** Map a Newbook booking to a fully-populated portal Booking. */
 export function mapBooking(
   b: NewBookBooking,
@@ -179,6 +249,7 @@ export function mapBooking(
     property_id: property.id,
     guest_id,
   });
+  const signature = mapSignatureInfo(b);
 
   return {
     id: bookingPortalId(b.booking_id),
@@ -210,6 +281,9 @@ export function mapBooking(
         length: e.equipment_length,
         unit: e.equipment_measurement_unit,
       })),
+      signature_status: signature.signature_status,
+      signature_signed_at: signature.signature_signed_at,
+      signature_document_url: signature.signature_document_url,
     },
     synced_at: new Date().toISOString(),
     created_at: toIso(b.booking_placed) || new Date().toISOString(),

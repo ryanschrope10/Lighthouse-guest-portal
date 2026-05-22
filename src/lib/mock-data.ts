@@ -395,7 +395,7 @@ export const mockNotifications: Notification[] = [
     target_type: "specific_guest",
     target_id: "guest_001",
     title: "Booking Confirmed",
-    body: "Your reservation for Site A-22 (Jun 20-27) has been confirmed. We look forward to seeing you!",
+    body: "Your booking for Site A-22 (Jun 20-27) has been confirmed. We look forward to seeing you!",
     channel: "email",
     sent_at: "2026-04-02T15:00:00Z",
     created_by: null,

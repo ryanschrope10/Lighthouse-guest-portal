@@ -86,9 +86,9 @@ export async function GET(request: NextRequest) {
         status: 'pending',
         due_date: '2025-08-01T00:00:00Z',
         paid_at: null,
-        description: 'Deposit - August reservation',
+        description: 'Deposit - August booking',
         line_items: [
-          { description: 'Reservation deposit', quantity: 1, unit_price: 500.0, total: 500.0 },
+          { description: 'Booking deposit', quantity: 1, unit_price: 500.0, total: 500.0 },
         ],
         synced_at: '2025-06-01T10:00:00Z',
       },

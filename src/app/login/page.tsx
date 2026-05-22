@@ -49,7 +49,7 @@ function LoginForm() {
           Guest<span className="text-gold-600"> Portal</span>
         </h1>
         <p className="mt-2 text-sm text-gray-500">
-          Sign in to manage your reservations
+          Sign in to manage your bookings
         </p>
       </div>
 
@@ -145,7 +145,7 @@ export default function LoginPage() {
                 Guest<span className="text-gold-600"> Portal</span>
               </h1>
               <p className="mt-2 text-sm text-gray-500">
-                Sign in to manage your reservations
+                Sign in to manage your bookings
               </p>
             </div>
             <div className="rounded-xl border border-sand-200 bg-white p-8 shadow-sm">

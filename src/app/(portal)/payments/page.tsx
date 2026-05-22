@@ -138,9 +138,9 @@ const mockInvoices: Invoice[] = [
     status: "paid",
     due_date: "2026-03-20T00:00:00Z",
     paid_at: "2026-03-20T09:15:00Z",
-    description: "Reservation fee",
+    description: "Booking fee",
     line_items: [
-      { description: "Non-refundable reservation fee", quantity: 1, unit_price: 50, total: 50 },
+      { description: "Non-refundable booking fee", quantity: 1, unit_price: 50, total: 50 },
     ],
     synced_at: "2026-03-20T10:00:00Z",
     booking: mockBookings[1],
