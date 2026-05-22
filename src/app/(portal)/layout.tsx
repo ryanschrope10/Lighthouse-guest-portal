@@ -27,11 +27,17 @@ export default async function PortalLayout({
   } else {
     // Session is tied to the Newbook demo guest; resolve identity and
     // property straight from Newbook (no portal user DB yet).
+    // Always have the property (static); guest comes from Newbook and
+    // may be briefly unavailable (e.g. upstream rate-limit) — degrade
+    // quietly rather than crashing the whole portal shell.
+    property = getProperty();
     try {
       guest = await getDemoGuest();
-      property = getProperty();
     } catch (error) {
-      console.error("Failed to resolve guest from Newbook:", error);
+      console.warn(
+        "Newbook guest lookup unavailable, rendering portal without guest profile:",
+        error instanceof Error ? error.message : error,
+      );
     }
 
     session = {

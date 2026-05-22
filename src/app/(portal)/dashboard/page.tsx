@@ -180,15 +180,18 @@ function deriveActivity(bookings: Booking[]): ActivityItem[] {
 export default function DashboardPage() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [guest, setGuest] = useState<Guest | null>(null);
+  const [docsDue, setDocsDue] = useState({ rules: 0, served: 0 });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [bRes, gRes] = await Promise.all([
+        const [bRes, gRes, rRes, sRes] = await Promise.all([
           fetch("/api/bookings"),
           fetch("/api/guest/profile"),
+          fetch("/api/documents/rules"),
+          fetch("/api/documents/served"),
         ]);
         const bJson: ApiResponse<Booking[]> = await bRes.json();
         if (cancelled) return;
@@ -200,6 +203,18 @@ export default function DashboardPage() {
         if (gRes.ok) {
           const gJson: ApiResponse<Guest> = await gRes.json();
           if (!cancelled && gJson.data) setGuest(gJson.data);
+        }
+        const rJson = rRes.ok
+          ? ((await rRes.json()) as ApiResponse<{ outstandingCount: number }>)
+          : null;
+        const sJson = sRes.ok
+          ? ((await sRes.json()) as ApiResponse<{ outstandingCount: number }>)
+          : null;
+        if (!cancelled) {
+          setDocsDue({
+            rules: rJson?.data?.outstandingCount ?? 0,
+            served: sJson?.data?.outstandingCount ?? 0,
+          });
         }
       } catch {
         if (!cancelled) setError("Could not reach the portal service.");
@@ -252,8 +267,24 @@ export default function DashboardPage() {
         }
       }
     }
+    if (docsDue.rules > 0) {
+      out.push({
+        id: "rr",
+        label: `Rules & Regulations need signing for your reservation`,
+        href: "/documents",
+      });
+    }
+    if (docsDue.served > 0) {
+      out.push({
+        id: "served",
+        label: `${docsDue.served} unread notice${
+          docsDue.served > 1 ? "s" : ""
+        } from the park`,
+        href: "/documents",
+      });
+    }
     return out;
-  }, [bookings]);
+  }, [bookings, docsDue]);
 
   const activity = useMemo(
     () => (bookings ? deriveActivity(bookings) : []),

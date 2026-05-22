@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getBookingById } from '@/lib/newbook/data';
+import { guestFacingError } from '@/lib/api-error';
 import type { Booking, ApiResponse } from '@/types';
 
 export async function GET(
@@ -26,8 +27,7 @@ export async function GET(
     return NextResponse.json<ApiResponse<null>>(
       {
         data: null,
-        error:
-          error instanceof Error ? error.message : 'Failed to load booking',
+        error: guestFacingError(error, 'We couldn’t load this booking.'),
       },
       { status: 502 }
     );

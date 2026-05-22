@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getDemoGuest } from '@/lib/newbook/data';
+import { guestFacingError } from '@/lib/api-error';
 import type { Guest, ApiResponse } from '@/types';
 
 export async function GET() {
@@ -23,8 +24,7 @@ export async function GET() {
     return NextResponse.json<ApiResponse<null>>(
       {
         data: null,
-        error:
-          error instanceof Error ? error.message : 'Failed to load profile',
+        error: guestFacingError(error, 'We couldn’t load your profile.'),
       },
       { status: 502 }
     );

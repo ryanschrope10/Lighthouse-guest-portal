@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBookings } from '@/lib/newbook/data';
+import { guestFacingError } from '@/lib/api-error';
 import type { Booking, BookingStatus, ApiResponse } from '@/types';
 
 export async function GET(request: NextRequest) {
@@ -20,8 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json<ApiResponse<null>>(
       {
         data: null,
-        error:
-          error instanceof Error ? error.message : 'Failed to load bookings',
+        error: guestFacingError(error, 'We couldn’t load your bookings.'),
       },
       { status: 502 }
     );

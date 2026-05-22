@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   CalendarDays,
   Receipt,
+  FileText,
   User,
   LogOut,
 } from "lucide-react";
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/bookings", label: "Bookings", icon: CalendarDays },
   { href: "/payments", label: "Payments", icon: Receipt },
+  { href: "/documents", label: "Documents", icon: FileText },
   { href: "/profile", label: "Profile", icon: User },
 ] as const;
 
@@ -25,19 +27,24 @@ function monogram(name: string): string {
   return name.trim().charAt(0).toUpperCase() || "G";
 }
 
-/** Park logo with graceful fallback to a brand-colored monogram. */
+/**
+ * The park's brand block. When a real logo loads it stands alone —
+ * no monogram, no name text. Parks without a logo fall back to a
+ * brand-colored monogram + name so the header is never blank.
+ */
 function BrandMark({
   name,
   logoUrl,
   color,
+  variant,
 }: {
   name: string;
   logoUrl?: string;
   color?: string;
+  variant: "sidebar" | "header";
 }) {
   // Preload the logo and only swap it in once it actually loads, so a
-  // missing file never flashes broken-image alt text — the monogram
-  // is the default until a real logo exists at logoUrl.
+  // missing file never flashes broken-image alt text.
   const [logoOk, setLogoOk] = useState(false);
 
   useEffect(() => {
@@ -57,18 +64,33 @@ function BrandMark({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={logoUrl}
-        alt={`${name} logo`}
-        className="h-9 w-auto max-w-[150px] object-contain"
+        alt={name}
+        className={clsx(
+          "w-auto object-contain",
+          variant === "sidebar" ? "h-12 max-w-[200px]" : "h-9 max-w-[150px]",
+        )}
       />
     );
   }
 
   return (
-    <div
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white"
-      style={{ backgroundColor: color || "#b47a24" }}
-    >
-      {monogram(name)}
+    <div className="flex min-w-0 items-center gap-3">
+      <div
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white"
+        style={{ backgroundColor: color || "#b47a24" }}
+      >
+        {monogram(name)}
+      </div>
+      <span
+        className={clsx(
+          "font-semibold text-gray-900",
+          variant === "sidebar"
+            ? "line-clamp-2 text-base leading-tight"
+            : "truncate text-base",
+        )}
+      >
+        {name}
+      </span>
     </div>
   );
 }
@@ -100,11 +122,13 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-sand-50 md:flex">
       {/* ── Desktop Sidebar ── */}
       <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r border-sand-200 bg-white">
-        <div className="flex h-16 items-center gap-3 border-b border-sand-200 px-6">
-          <BrandMark name={parkName} logoUrl={logoUrl} color={brandColor} />
-          <span className="text-base font-semibold text-gray-900 line-clamp-2 leading-tight">
-            {parkName}
-          </span>
+        <div className="flex h-16 items-center justify-center border-b border-sand-200 px-6">
+          <BrandMark
+            name={parkName}
+            logoUrl={logoUrl}
+            color={brandColor}
+            variant="sidebar"
+          />
         </div>
 
         <div className="px-6 py-4 border-b border-sand-100">
@@ -158,11 +182,13 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col md:pl-60">
         {/* Mobile top header */}
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-sand-200 bg-white px-4 md:hidden">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <BrandMark name={parkName} logoUrl={logoUrl} color={brandColor} />
-            <span className="truncate text-base font-semibold text-gray-900">
-              {parkName}
-            </span>
+          <div className="flex min-w-0 items-center">
+            <BrandMark
+              name={parkName}
+              logoUrl={logoUrl}
+              color={brandColor}
+              variant="header"
+            />
           </div>
           <NotificationBell unreadCount={3} />
         </header>
