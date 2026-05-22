@@ -65,65 +65,76 @@ export function getProperty(): Property {
   return PROPERTY_PROFILES[getDefaultProperty()] ?? PROPERTY_PROFILES.holiday;
 }
 
-// Short-lived in-memory cache so navigating between portal pages
-// doesn't re-hit Newbook on every request during a browse session.
-const CACHE_TTL_MS = 60_000;
-let cache: { key: string; at: number; bookings: Booking[] } | null = null;
+// One cached raw bookings_list response feeds BOTH getBookings and
+// getDemoGuest, so a portal page load makes a single Newbook call
+// (not one per consumer). Newbook sits behind Cloudflare and will
+// rate-limit/403 a chatty client, so we also negative-cache failures
+// briefly to avoid hammering during an outage or block.
+const SUCCESS_TTL_MS = 5 * 60_000;
+const FAILURE_TTL_MS = 30_000;
 
-async function fetchDemoBookings(): Promise<Booking[]> {
+let rawCache: { key: string; at: number; raw: NewBookBooking[] } | null = null;
+let failCache: { key: string; at: number; error: Error } | null = null;
+
+async function fetchRawBookings(): Promise<NewBookBooking[]> {
   const guestId = getDemoGuestId();
-  const cacheKey = `${getDefaultProperty()}:${guestId}`;
-  if (cache && cache.key === cacheKey && Date.now() - cache.at < CACHE_TTL_MS) {
-    return cache.bookings;
+  const key = `${getDefaultProperty()}:${guestId}`;
+  const now = Date.now();
+
+  if (rawCache && rawCache.key === key && now - rawCache.at < SUCCESS_TTL_MS) {
+    return rawCache.raw;
+  }
+  // Re-throw the recent failure instead of pelting a blocked endpoint.
+  if (failCache && failCache.key === key && now - failCache.at < FAILURE_TTL_MS) {
+    throw failCache.error;
   }
 
-  const client = createNewBookClient();
-  const property = getProperty();
-
-  const raw = await client.request<NewBookBooking[]>('bookings_list', {
-    period_from: '2020-01-01 00:00:00',
-    period_to: '2035-12-31 00:00:00',
-    list_type: 'staying',
-    guest_id: Number(guestId),
-  });
-
-  const bookings = (Array.isArray(raw) ? raw : [])
-    .map((b) => mapBooking(b, property, { guestId: guestPortalId(guestId) }))
-    .sort(
-      (a, b) =>
-        new Date(b.check_in).getTime() - new Date(a.check_in).getTime()
-    );
-
-  cache = { key: cacheKey, at: Date.now(), bookings };
-  return bookings;
+  try {
+    const client = createNewBookClient();
+    const raw = await client.request<NewBookBooking[]>('bookings_list', {
+      period_from: '2020-01-01 00:00:00',
+      period_to: '2035-12-31 00:00:00',
+      list_type: 'staying',
+      guest_id: Number(guestId),
+    });
+    const list = Array.isArray(raw) ? raw : [];
+    rawCache = { key, at: Date.now(), raw: list };
+    failCache = null;
+    return list;
+  } catch (error) {
+    failCache = {
+      key,
+      at: Date.now(),
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+    throw error;
+  }
 }
 
 /** All bookings for the demo guest, newest stay first. */
 export async function getBookings(): Promise<Booking[]> {
-  return fetchDemoBookings();
+  const property = getProperty();
+  const guestId = getDemoGuestId();
+  return (await fetchRawBookings())
+    .map((b) => mapBooking(b, property, { guestId: guestPortalId(guestId) }))
+    .sort(
+      (a, b) =>
+        new Date(b.check_in).getTime() - new Date(a.check_in).getTime(),
+    );
 }
 
 /** One booking by its portal id (`nb-bk-<newbookId>`), or null. */
 export async function getBookingById(
-  portalId: string
+  portalId: string,
 ): Promise<Booking | null> {
-  const bookings = await fetchDemoBookings();
+  const bookings = await getBookings();
   return bookings.find((b) => b.id === portalId) ?? null;
 }
 
 /** The demo guest's profile, derived from their most recent booking. */
 export async function getDemoGuest(): Promise<Guest | null> {
-  const client = createNewBookClient();
-  const guestId = getDemoGuestId();
-
-  const raw = await client.request<NewBookBooking[]>('bookings_list', {
-    period_from: '2020-01-01 00:00:00',
-    period_to: '2035-12-31 00:00:00',
-    list_type: 'staying',
-    guest_id: Number(guestId),
-  });
-
-  for (const b of Array.isArray(raw) ? raw : []) {
+  const raw = await fetchRawBookings();
+  for (const b of raw) {
     const lead = primaryGuest(b);
     if (lead) {
       return {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDemoGuest, getBookings, getProperty } from "@/lib/newbook/data";
 import { getRulesDoc } from "@/lib/legal-docs";
 import { listSignatures } from "@/lib/portal-store";
+import { guestFacingError } from "@/lib/api-error";
 import type { ApiResponse } from "@/types";
 import type {
   RulesPayload,
@@ -82,10 +83,10 @@ export async function GET() {
     return NextResponse.json<ApiResponse<null>>(
       {
         data: null,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load Rules & Regulations",
+        error: guestFacingError(
+          error,
+          "We couldn’t load your Rules & Regulations.",
+        ),
       },
       { status: 502 },
     );

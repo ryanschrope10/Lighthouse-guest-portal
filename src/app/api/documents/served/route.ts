@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDemoGuest, getProperty } from "@/lib/newbook/data";
 import { getServedDocs } from "@/lib/legal-docs";
 import { listAcks } from "@/lib/portal-store";
+import { guestFacingError } from "@/lib/api-error";
 import type { ApiResponse } from "@/types";
 import type { ServedPayload, ServedDocStatus } from "@/lib/documents-types";
 
@@ -47,10 +48,7 @@ export async function GET() {
     return NextResponse.json<ApiResponse<null>>(
       {
         data: null,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load served documents",
+        error: guestFacingError(error, "We couldn’t load your documents."),
       },
       { status: 502 },
     );
