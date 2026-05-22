@@ -16,6 +16,7 @@ import { createNewBookClient } from './client';
 import { getDefaultProperty, getDemoGuestId } from './config';
 import type { NewBookBooking } from './types';
 import { mapBooking, mapGuest, primaryGuest, guestPortalId } from './mappers';
+import { DEMO_RAW_BOOKINGS } from './fixtures';
 
 const PROPERTY_PROFILES: Record<string, Property> = {
   holiday: {
@@ -76,6 +77,11 @@ const FAILURE_TTL_MS = 30_000;
 let rawCache: { key: string; at: number; raw: NewBookBooking[] } | null = null;
 let failCache: { key: string; at: number; error: Error } | null = null;
 
+/** Dev-only: serve a snapshot when the live API is unreachable. */
+function offlineFallbackEnabled(): boolean {
+  return process.env.NEWBOOK_OFFLINE_FALLBACK === "true";
+}
+
 async function fetchRawBookings(): Promise<NewBookBooking[]> {
   const guestId = getDemoGuestId();
   const key = `${getDefaultProperty()}:${guestId}`;
@@ -84,8 +90,10 @@ async function fetchRawBookings(): Promise<NewBookBooking[]> {
   if (rawCache && rawCache.key === key && now - rawCache.at < SUCCESS_TTL_MS) {
     return rawCache.raw;
   }
-  // Re-throw the recent failure instead of pelting a blocked endpoint.
+  // We failed recently — don't pelt a blocked endpoint. Serve the
+  // offline snapshot if enabled, otherwise surface the error.
   if (failCache && failCache.key === key && now - failCache.at < FAILURE_TTL_MS) {
+    if (offlineFallbackEnabled()) return DEMO_RAW_BOOKINGS;
     throw failCache.error;
   }
 
@@ -107,6 +115,12 @@ async function fetchRawBookings(): Promise<NewBookBooking[]> {
       at: Date.now(),
       error: error instanceof Error ? error : new Error(String(error)),
     };
+    if (offlineFallbackEnabled()) {
+      console.warn(
+        "Newbook unreachable — serving offline snapshot (NEWBOOK_OFFLINE_FALLBACK). Live data resumes when the API is reachable.",
+      );
+      return DEMO_RAW_BOOKINGS;
+    }
     throw error;
   }
 }
