@@ -5,3 +5,6 @@ node_modules
 Dockerfile
 docker-compose.yml
 .dockerignore
+lcp-website
+.claude
+scripts

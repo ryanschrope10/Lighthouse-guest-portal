@@ -1,7 +1,18 @@
 import type { NextConfig } from "next";
 
+// The build always runs from the project root, so cwd is the app dir.
+const projectRoot = process.cwd();
+
 const nextConfig: NextConfig = {
   output: "standalone",
+
+  // Pin the workspace/file-tracing root to THIS app directory. Without
+  // this, extra lockfiles in the tree (e.g. lcp-website, git worktrees)
+  // make Next infer a parent dir as the root and nest the standalone
+  // output under a subpath, so `.next/standalone/server.js` goes missing
+  // and the build's copy step (and the Render Dockerfile) breaks.
+  outputFileTracingRoot: projectRoot,
+  turbopack: { root: projectRoot },
 
   // Allow service worker to control the entire site scope
   async headers() {
