@@ -41,7 +41,7 @@ export async function GET() {
         b.status === "upcoming" || b.status === "checked_in";
       return {
         bookingId: b.id,
-        label: b.site_or_room ?? "Reservation",
+        label: b.site_or_room ?? "Booking",
         checkIn: b.check_in,
         checkOut: b.check_out,
         bookingStatus: b.status,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { getSessionUser, requireGuest } from "@/lib/session";
+import { ensureBookingSynced } from "@/lib/booking-sync";
 import type { ApiResponse } from "@/types/index";
 import type { Review, ReviewWithGuestBooking } from "@/types/reviews";
 
@@ -23,7 +24,7 @@ export async function GET() {
           r.is_public_intent, r.public_cta_url, r.public_cta_clicked,
           r.staff_response, r.staff_responded_at, r.staff_responded_by, r.created_at,
           g.id as g_id, g.first_name as g_first_name, g.last_name as g_last_name, g.email as g_email,
-          b.id as b_id, b.check_in as b_check_in, b.check_out as b_check_out, b.site_or_room as b_site_or_room
+          b.id as b_id, b.newbook_booking_id as b_newbook_id, b.check_in as b_check_in, b.check_out as b_check_out, b.site_or_room as b_site_or_room
         from reviews r
         left join guests g on g.id = r.guest_id
         left join bookings b on b.id = r.booking_id
@@ -35,7 +36,7 @@ export async function GET() {
           r.is_public_intent, r.public_cta_url, r.public_cta_clicked,
           r.staff_response, r.staff_responded_at, r.staff_responded_by, r.created_at,
           g.id as g_id, g.first_name as g_first_name, g.last_name as g_last_name, g.email as g_email,
-          b.id as b_id, b.check_in as b_check_in, b.check_out as b_check_out, b.site_or_room as b_site_or_room
+          b.id as b_id, b.newbook_booking_id as b_newbook_id, b.check_in as b_check_in, b.check_out as b_check_out, b.site_or_room as b_site_or_room
         from reviews r
         left join guests g on g.id = r.guest_id
         left join bookings b on b.id = r.booking_id
@@ -62,6 +63,7 @@ export async function GET() {
       g_last_name: string | null;
       g_email: string | null;
       b_id: string | null;
+      b_newbook_id: string | null;
       b_check_in: string | null;
       b_check_out: string | null;
       b_site_or_room: string | null;
@@ -71,7 +73,9 @@ export async function GET() {
       id: r.id,
       property_id: r.property_id,
       guest_id: r.guest_id,
-      booking_id: r.booking_id,
+      // Surface the portal id (nb-bk-<id>) so the client review widget can
+      // match the current booking; falls back to the raw stored value.
+      booking_id: r.b_newbook_id ? `nb-bk-${r.b_newbook_id}` : r.booking_id,
       rating: r.rating,
       feedback: r.feedback,
       is_public_intent: r.is_public_intent,
@@ -131,10 +135,18 @@ export async function POST(request: Request) {
       typeof body?.feedback === "string" && body.feedback.trim().length > 0
         ? body.feedback.trim()
         : null;
-    const bookingId: string | null =
+    const rawBookingId: string | null =
       typeof body?.booking_id === "string" && body.booking_id.length > 0
         ? body.booking_id
         : null;
+    // reviews.booking_id is a UUID FK; the client sends the portal id
+    // (nb-bk-<id>). Sync it into Neon and store the local UUID, or null
+    // if the booking can't be resolved.
+    let bookingId: string | null = null;
+    if (rawBookingId) {
+      const synced = await ensureBookingSynced(rawBookingId, guest);
+      bookingId = synced?.id ?? null;
+    }
 
     let publicCtaUrl: string | null = null;
     if (isPublicIntent) {

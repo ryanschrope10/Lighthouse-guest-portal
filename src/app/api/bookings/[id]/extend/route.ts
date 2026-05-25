@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { sql } from '@/lib/db';
 import { requireGuest } from '@/lib/session';
+import { ensureBookingSynced } from '@/lib/booking-sync';
 import type { ApiResponse } from '@/types';
 import type { AddonRequestRow } from '@/types/addons';
 
@@ -33,25 +34,19 @@ export async function POST(
       );
     }
 
-    const bookingRows = (await sql`
-      select id, property_id, guest_id, check_out, site_or_room
-      from bookings
-      where id = ${bookingId}
-      limit 1
-    `) as Array<{
-      id: string;
-      property_id: string;
-      guest_id: string;
-      check_out: string;
-      site_or_room: string | null;
-    }>;
-    if (bookingRows.length === 0 || bookingRows[0].guest_id !== guest.id) {
+    const booking = await ensureBookingSynced(bookingId, guest);
+    if (!booking || booking.guest_id !== guest.id) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Booking not found' },
         { status: 404 }
       );
     }
-    const booking = bookingRows[0];
+    if (!booking.check_out) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'Booking has no check-out date to extend' },
+        { status: 400 }
+      );
+    }
 
     const currentCheckOut = parseISO(booking.check_out);
     if (newCheckOut <= currentCheckOut) {
@@ -117,7 +112,7 @@ export async function POST(
         quantity, price_cents, status, payment_status, scheduled_for, details
       )
       values (
-        ${bookingId}, ${guest.id}, ${booking.property_id}, ${catalog.id}, ${catalog.slug},
+        ${booking.id}, ${guest.id}, ${booking.property_id}, ${catalog.id}, ${catalog.slug},
         ${extraNights}, ${priceCents}, ${status},
         ${priceCents === 0 ? 'waived' : 'unpaid'},
         ${newCheckOut.toISOString()},

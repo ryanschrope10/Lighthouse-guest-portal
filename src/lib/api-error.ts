@@ -10,7 +10,7 @@ export function guestFacingError(
   fallback = "Something went wrong. Please try again.",
 ): string {
   if (error instanceof NewBookApiError) {
-    return "We're having trouble reaching the reservation system right now. Please try again in a few minutes.";
+    return "We're having trouble reaching the booking system right now. Please try again in a few minutes.";
   }
   return fallback;
 }

@@ -18,7 +18,7 @@ export interface RulesPayload {
   doc: RulesDoc;
   guestName: string;
   bookings: BookingSigningStatus[];
-  /** Active/upcoming reservations still missing a current-version signature. */
+  /** Active/upcoming bookings still missing a current-version signature. */
   outstandingCount: number;
 }
 

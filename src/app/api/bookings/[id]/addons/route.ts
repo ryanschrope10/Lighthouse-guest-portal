@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { requireGuest } from '@/lib/session';
+import { ensureBookingSynced } from '@/lib/booking-sync';
 import type { ApiResponse } from '@/types';
 import type {
   AddonCatalogItem,
@@ -25,19 +26,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireGuest();
+    const guest = await requireGuest();
 
     const { id: bookingId } = await params;
-    const bookingRows = (await sql`
-      select id, property_id from bookings where id = ${bookingId} limit 1
-    `) as Array<{ id: string; property_id: string }>;
-    if (bookingRows.length === 0) {
+    const booking = await ensureBookingSynced(bookingId, guest);
+    if (!booking) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Booking not found' },
         { status: 404 }
       );
     }
-    const booking = bookingRows[0];
 
     const [catalogRaw, requestRowsRaw] = await Promise.all([
       sql`
@@ -52,7 +50,7 @@ export async function GET(
           c.price_cents as c_price_cents, c.requires_approval as c_requires_approval
         from addon_requests r
         left join addon_catalog c on c.id = r.addon_catalog_id
-        where r.booking_id = ${bookingId}
+        where r.booking_id = ${booking.id}
         order by r.requested_at desc
       `,
     ]);
@@ -129,16 +127,13 @@ export async function POST(
 
     const quantity = Math.max(1, Math.floor(body.quantity ?? 1));
 
-    const bookingRows = (await sql`
-      select id, property_id, guest_id from bookings where id = ${bookingId} limit 1
-    `) as Array<{ id: string; property_id: string; guest_id: string }>;
-    if (bookingRows.length === 0 || bookingRows[0].guest_id !== guest.id) {
+    const booking = await ensureBookingSynced(bookingId, guest);
+    if (!booking || booking.guest_id !== guest.id) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Booking not found' },
         { status: 404 }
       );
     }
-    const booking = bookingRows[0];
 
     const catalogRows = (await sql`
       select id, property_id, slug, name, price_cents, requires_approval, active
@@ -178,7 +173,7 @@ export async function POST(
         quantity, price_cents, status, payment_status, details
       )
       values (
-        ${bookingId}, ${guest.id}, ${booking.property_id}, ${catalog.id}, ${catalog.slug},
+        ${booking.id}, ${guest.id}, ${booking.property_id}, ${catalog.id}, ${catalog.slug},
         ${quantity}, ${priceCents}, ${status},
         ${priceCents === 0 ? 'waived' : 'unpaid'},
         ${JSON.stringify(body.details ?? {})}::jsonb

@@ -14,9 +14,12 @@ export async function POST(
 
     const { id: bookingId, requestId } = await params;
 
+    // addon_requests.id is unique; guest ownership is the real authz check.
+    // (booking_id stored here is the local Neon UUID, not the portal id in
+    // the URL, so we don't filter by it.)
     const reqRows = (await sql`
       select * from addon_requests
-      where id = ${requestId} and booking_id = ${bookingId}
+      where id = ${requestId}
       limit 1
     `) as Array<AddonRequestRow>;
     if (reqRows.length === 0 || reqRows[0].guest_id !== guest.id) {

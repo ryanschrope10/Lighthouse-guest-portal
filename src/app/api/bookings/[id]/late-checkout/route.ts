@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { requireGuest } from '@/lib/session';
+import { ensureBookingSynced } from '@/lib/booking-sync';
 import type { ApiResponse } from '@/types';
 import type { AddonRequestRow } from '@/types/addons';
 
@@ -32,25 +33,13 @@ export async function POST(
       );
     }
 
-    const bookingRows = (await sql`
-      select id, property_id, guest_id, check_out, site_or_room
-      from bookings
-      where id = ${bookingId}
-      limit 1
-    `) as Array<{
-      id: string;
-      property_id: string;
-      guest_id: string;
-      check_out: string;
-      site_or_room: string | null;
-    }>;
-    if (bookingRows.length === 0 || bookingRows[0].guest_id !== guest.id) {
+    const booking = await ensureBookingSynced(bookingId, guest);
+    if (!booking || booking.guest_id !== guest.id) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Booking not found' },
         { status: 404 }
       );
     }
-    const booking = bookingRows[0];
 
     const catalogRows = (await sql`
       select id, slug, name, price_cents, requires_approval, active
@@ -75,7 +64,7 @@ export async function POST(
 
     // Back-to-back conflict: another booking starts same day on same site.
     let hasConflict = false;
-    if (booking.site_or_room) {
+    if (booking.site_or_room && booking.check_out) {
       const checkoutDayStart = new Date(booking.check_out);
       checkoutDayStart.setHours(0, 0, 0, 0);
       const checkoutDayEnd = new Date(checkoutDayStart);
@@ -102,7 +91,7 @@ export async function POST(
         quantity, price_cents, status, payment_status, scheduled_for, details
       )
       values (
-        ${bookingId}, ${guest.id}, ${booking.property_id}, ${catalog.id}, ${catalog.slug},
+        ${booking.id}, ${guest.id}, ${booking.property_id}, ${catalog.id}, ${catalog.slug},
         1, ${priceCents}, ${status},
         ${priceCents === 0 ? 'waived' : 'unpaid'},
         ${scheduledAt.toISOString()},

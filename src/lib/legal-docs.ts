@@ -3,7 +3,7 @@
 // ============================================================
 //
 // Rules & Regulations are versioned: bumping `version` makes
-// every reservation require a fresh signature against the new
+// every booking require a fresh signature against the new
 // version. Content is plain text the park owns/edits — not a
 // scraped or third-party document.
 //
@@ -20,7 +20,7 @@ export interface RulesSection {
 
 export interface RulesDoc {
   id: string;
-  /** Bump to force re-signing on every reservation. */
+  /** Bump to force re-signing on every booking. */
   version: string;
   title: string;
   effectiveDate: string;
@@ -46,9 +46,9 @@ const HOLIDAY_RULES: RulesDoc = {
   title: "Holiday Motel & RV Park — Rules & Regulations",
   effectiveDate: "2026-01-01",
   intro:
-    "These Rules & Regulations are part of your reservation agreement. " +
+    "These Rules & Regulations are part of your booking agreement. " +
     "By signing, you acknowledge you have read and agree to abide by them " +
-    "for the duration of this stay. They must be signed for each reservation.",
+    "for the duration of this stay. They must be signed for each booking.",
   sections: [
     {
       heading: "1. Check-in & Check-out",

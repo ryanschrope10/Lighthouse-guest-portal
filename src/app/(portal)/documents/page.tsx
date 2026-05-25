@@ -97,7 +97,7 @@ function SignForm({
         />
         <span>
           I have read and agree to the Rules &amp; Regulations for this
-          reservation. I understand this is a legally binding electronic
+          booking. I understand this is a legally binding electronic
           signature.
         </span>
       </label>
@@ -164,7 +164,7 @@ function RulesTab({ onCounts }: { onCounts: (n: number) => void }) {
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
           <p className="text-sm text-amber-800">
             You have {actionable.length}{" "}
-            {actionable.length > 1 ? "reservations" : "reservation"} that
+            {actionable.length > 1 ? "bookings" : "booking"} that
             require a signed Rules &amp; Regulations. Please review and sign
             below.
           </p>
@@ -196,14 +196,14 @@ function RulesTab({ onCounts }: { onCounts: (n: number) => void }) {
         </CardBody>
       </Card>
 
-      {/* Sign per reservation */}
+      {/* Sign per booking */}
       <section>
         <h3 className="text-sm font-semibold uppercase tracking-wide text-sand-700">
-          Sign for your reservation
+          Sign for your booking
         </h3>
         {actionable.length === 0 ? (
           <p className="mt-2 text-sm text-sand-500">
-            No reservations currently require a signature — you&apos;re all set.
+            No bookings currently require a signature — you&apos;re all set.
           </p>
         ) : (
           <div className="mt-3 space-y-3">
@@ -240,7 +240,7 @@ function RulesTab({ onCounts }: { onCounts: (n: number) => void }) {
       {others.length > 0 && (
         <section>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-sand-700">
-            Reservation history
+            Booking history
           </h3>
           <div className="mt-3 space-y-2">
             {others.map((b) => (

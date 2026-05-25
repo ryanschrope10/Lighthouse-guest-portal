@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const name = typeof fullName === "string" ? fullName.trim() : "";
     if (!bookingId || name.length < 2) {
       return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: "Your full name and a reservation are required" },
+        { data: null, error: "Your full name and a booking are required" },
         { status: 400 },
       );
     }
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const booking = bookings.find((b) => b.id === bookingId);
     if (!booking) {
       return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: "Reservation not found" },
+        { data: null, error: "Booking not found" },
         { status: 404 },
       );
     }
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json<ApiResponse<null>>(
         {
           data: null,
-          error: "This reservation does not require a signature",
+          error: "This booking does not require a signature",
         },
         { status: 409 },
       );

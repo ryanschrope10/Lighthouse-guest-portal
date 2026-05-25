@@ -270,7 +270,7 @@ export default function DashboardPage() {
     if (docsDue.rules > 0) {
       out.push({
         id: "rr",
-        label: `Rules & Regulations need signing for your reservation`,
+        label: `Rules & Regulations need signing for your booking`,
         href: "/documents",
       });
     }
