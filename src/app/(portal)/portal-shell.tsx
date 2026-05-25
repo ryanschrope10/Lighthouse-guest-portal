@@ -67,7 +67,7 @@ function BrandMark({
         alt={name}
         className={clsx(
           "w-auto object-contain",
-          variant === "sidebar" ? "h-12 max-w-[200px]" : "h-9 max-w-[150px]",
+          variant === "sidebar" ? "h-16 max-w-full" : "h-10 max-w-[160px]",
         )}
       />
     );
@@ -122,7 +122,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-sand-50 md:flex">
       {/* ── Desktop Sidebar ── */}
       <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r border-sand-200 bg-white">
-        <div className="flex h-16 items-center justify-center border-b border-sand-200 px-6">
+        <div className="flex h-20 items-center justify-center border-b border-sand-200 px-4">
           <BrandMark
             name={parkName}
             logoUrl={logoUrl}
