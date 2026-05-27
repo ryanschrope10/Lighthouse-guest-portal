@@ -13,6 +13,14 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["--max-old-space-size=400", ".next/standalone/server.js"],
       "port": 3000
+    },
+    {
+      "name": "lcp-website",
+      "cwd": "lcp-website",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

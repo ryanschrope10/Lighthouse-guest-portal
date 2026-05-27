@@ -7,28 +7,24 @@ const team = [
     name: "Josh Smith",
     role: "Capital & Operations",
     email: "josh@wearelcp.com",
-    phone: "(469) 984-8503",
     photo: "/team/Josh%20Smith.webp",
   },
   {
     name: "Heather Dimmick",
     role: "Acquisitions & Construction",
     email: "heather@wearelcp.com",
-    phone: "(914) 960-3338",
     photo: "/team/Heather%20Dimmick.webp",
   },
   {
     name: "Ryan Heltemes",
     role: "Acquisitions & Value-Add",
     email: "ryan@wearelcp.com",
-    phone: "(360) 749-0868",
     photo: "/team/Ryan%20Heltemes.webp",
   },
   {
     name: "Heather Torres",
     role: "Investor Relations",
     email: "heather.torres@wearelcp.com",
-    phone: "(360) 888-7842",
     photo: "/team/Heather%20Torres.webp",
   },
 ];
@@ -82,12 +78,6 @@ export default function Contact() {
                       >
                         {p.email}
                       </a>
-                      <a
-                        href={`tel:${p.phone.replace(/\D/g, "")}`}
-                        className="block text-ink-700 transition-colors hover:text-forest-700"
-                      >
-                        {p.phone}
-                      </a>
                     </div>
                   </div>
                 </div>
@@ -119,16 +109,6 @@ export default function Contact() {
                   </span>
                   <a href="mailto:hello@wearelcp.com" className="hover:text-forest-700">
                     hello@wearelcp.com
-                  </a>
-                </li>
-                <li className="flex items-center gap-3 text-ink-700">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-clay-300/60 text-ink-900">
-                    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
-                      <path d="M2 4a2 2 0 012-2h2.28a2 2 0 011.93 1.45l.7 2.45a2 2 0 01-.5 2L7.2 9.3a11 11 0 003.5 3.5l1.4-1.2a2 2 0 012-.5l2.45.7A2 2 0 0118 13.72V16a2 2 0 01-2 2h-1C7.82 18 2 12.18 2 5V4z" />
-                    </svg>
-                  </span>
-                  <a href="tel:+14699848503" className="hover:text-forest-700">
-                    (469) 984-8503
                   </a>
                 </li>
               </ul>

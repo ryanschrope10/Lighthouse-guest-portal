@@ -127,14 +127,6 @@ export default function Footer() {
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="tel:+14699848503"
-                    className="hover:text-clay-300"
-                  >
-                    (469) 984-8503
-                  </a>
-                </li>
-                <li>
                   <Link to="/submit" className="hover:text-clay-300">
                     Submit a deal
                   </Link>

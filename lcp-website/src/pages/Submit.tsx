@@ -9,14 +9,16 @@ const states = [
 ];
 
 const buyBoxBullets = [
+  "Mobile home parks are our primary focus; RV parks secondary",
   "$4M – $10M+ purchase price",
+  "Minimum NOI of $250K",
+  "Focus states: FL, LA, ID, AZ, AL, MS",
+  "Within 45 minutes of a 25,000+ population center",
+  "50+ sites or pads preferred",
   "RV parks at 10%+ cap rate (or clear path within 6 months)",
   "Mobile home communities at 7%+ cap rate",
-  "50+ sites or pads preferred",
+  "Long-term residents preferred; open to hybrid/transient parks",
   "Value-add or operational upside",
-  "Long-term residents preferred; transient secondary",
-  "Landlord-friendly states — strong focus on TX and ID",
-  "Mountain West and Southeast markets welcome",
   "Direct, brokered, and off-market opportunities",
 ];
 

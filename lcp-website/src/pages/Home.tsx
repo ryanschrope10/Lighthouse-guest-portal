@@ -91,14 +91,29 @@ const assets = [
 
 const buyBox = [
   {
+    k: "Asset Focus",
+    v: "Mobile Home Parks First",
+    detail: "Mobile home parks are our primary asset class, with RV parks as a secondary focus.",
+  },
+  {
     k: "Purchase Price",
     v: "$4M – $10M+",
     detail: "Core acquisition sweet spot with room for larger deals.",
   },
   {
+    k: "Minimum NOI",
+    v: "$250K+",
+    detail: "Minimum net operating income of $250,000.",
+  },
+  {
     k: "Location",
-    v: "Landlord-Friendly States",
-    detail: "Primary focus on Texas and Idaho with select Mountain West and Southeast markets.",
+    v: "Six Focus States",
+    detail: "Florida, Louisiana, Idaho, Arizona, Alabama, and Mississippi.",
+  },
+  {
+    k: "Proximity",
+    v: "Within 45 Minutes",
+    detail: "Within 45 minutes of a population center of 25,000 or more.",
   },
   {
     k: "Size",
@@ -118,7 +133,7 @@ const buyBox = [
   {
     k: "Tenant Profile",
     v: "Long-Term Residents",
-    detail: "Long-term preferred; transient revenue as a secondary stream.",
+    detail: "Long-term residents are our primary focus, though we're open to hybrid and transient parks.",
   },
   {
     k: "Infrastructure",
@@ -236,7 +251,7 @@ function Hero() {
                 <dt className="text-xs uppercase tracking-widest text-clay-500">
                   Focus
                 </dt>
-                <dd className="mt-1 font-display text-2xl text-ink-900">TX · ID</dd>
+                <dd className="mt-1 font-display text-2xl text-ink-900">6 States</dd>
               </div>
             </dl>
           </Reveal>
