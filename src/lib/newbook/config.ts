@@ -65,3 +65,15 @@ export function getDefaultProperty(): PropertyKey {
 export function getDemoGuestId(): string {
   return required('NEWBOOK_DEMO_GUEST_ID');
 }
+
+/**
+ * The Newbook contact-template id whose email carries the guest's
+ * "Pay Your Booking Online" link ([booking:view_booking_online:link]).
+ * The park creates this template; drop its id here (or set
+ * NEWBOOK_PAY_TEMPLATE_ID) to switch on online payment. Until it's set,
+ * the Pay button reports that online payment isn't enabled yet.
+ */
+const PAY_LINK_TEMPLATE_ID = ''; // TODO: set to the park's pay-link template id
+export function getPayTemplateId(): string {
+  return process.env.NEWBOOK_PAY_TEMPLATE_ID || PAY_LINK_TEMPLATE_ID;
+}
