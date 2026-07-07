@@ -13,10 +13,31 @@
 
 import type { Booking, Guest, Property } from '@/types/index';
 import { createNewBookClient } from './client';
-import { getDefaultProperty, getDemoGuestId } from './config';
+import { getDefaultProperty } from './config';
+import { getSessionUser } from '@/lib/session';
 import type { NewBookBooking } from './types';
 import { mapBooking, mapGuest, primaryGuest, guestPortalId } from './mappers';
 import { DEMO_RAW_BOOKINGS } from './fixtures';
+
+/** Thrown when a read is attempted without a signed-in, Newbook-linked guest. */
+export class NoLinkedGuestError extends Error {
+  constructor() {
+    super('NO_LINKED_GUEST');
+    this.name = 'NoLinkedGuestError';
+  }
+}
+
+/**
+ * Resolve WHICH guest's data to read: an explicit override (trusted server
+ * code) else the signed-in guest's Newbook id from the JWT. Throws rather
+ * than ever falling back to someone else's data.
+ */
+async function resolveGuestId(explicit?: string): Promise<string> {
+  if (explicit) return explicit;
+  const user = await getSessionUser();
+  if (user?.newbookGuestId) return user.newbookGuestId;
+  throw new NoLinkedGuestError();
+}
 
 const PROPERTY_PROFILES: Record<string, Property> = {
   holiday: {
@@ -82,8 +103,7 @@ function offlineFallbackEnabled(): boolean {
   return process.env.NEWBOOK_OFFLINE_FALLBACK === "true";
 }
 
-async function fetchRawBookings(): Promise<NewBookBooking[]> {
-  const guestId = getDemoGuestId();
+async function fetchRawBookings(guestId: string): Promise<NewBookBooking[]> {
   const key = `${getDefaultProperty()}:${guestId}`;
   const now = Date.now();
 
@@ -125,12 +145,12 @@ async function fetchRawBookings(): Promise<NewBookBooking[]> {
   }
 }
 
-/** All bookings for the demo guest, newest stay first. */
-export async function getBookings(): Promise<Booking[]> {
+/** All bookings for the signed-in guest, newest stay first. */
+export async function getBookings(guestId?: string): Promise<Booking[]> {
   const property = getProperty();
-  const guestId = getDemoGuestId();
-  return (await fetchRawBookings())
-    .map((b) => mapBooking(b, property, { guestId: guestPortalId(guestId) }))
+  const id = await resolveGuestId(guestId);
+  return (await fetchRawBookings(id))
+    .map((b) => mapBooking(b, property, { guestId: guestPortalId(id) }))
     .sort(
       (a, b) =>
         new Date(b.check_in).getTime() - new Date(a.check_in).getTime(),
@@ -140,14 +160,16 @@ export async function getBookings(): Promise<Booking[]> {
 /** One booking by its portal id (`nb-bk-<newbookId>`), or null. */
 export async function getBookingById(
   portalId: string,
+  guestId?: string,
 ): Promise<Booking | null> {
-  const bookings = await getBookings();
+  const bookings = await getBookings(guestId);
   return bookings.find((b) => b.id === portalId) ?? null;
 }
 
-/** The demo guest's profile, derived from their most recent booking. */
-export async function getDemoGuest(): Promise<Guest | null> {
-  const raw = await fetchRawBookings();
+/** The signed-in guest's profile, derived from their most recent booking. */
+export async function getDemoGuest(guestId?: string): Promise<Guest | null> {
+  const id = await resolveGuestId(guestId);
+  const raw = await fetchRawBookings(id);
   for (const b of raw) {
     const lead = primaryGuest(b);
     if (lead) {
