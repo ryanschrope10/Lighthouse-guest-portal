@@ -111,15 +111,32 @@ export async function POST(request: Request) {
       }
     }
 
-    // NOTE: This track has no blob/file storage configured, so we persist
-    // document METADATA only. file_path records the original file name for
-    // reference; the actual file bytes are not stored anywhere yet.
+    // The actual file bytes, base64-encoded, stored in Postgres (no object
+    // store on this host). Capped at ~5 MB.
+    const contentType =
+      typeof body?.content_type === 'string' && body.content_type
+        ? body.content_type
+        : 'application/octet-stream';
+    const fileData = typeof body?.file_data === 'string' ? body.file_data : '';
+    if (!fileData) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'file_data is required' },
+        { status: 400 }
+      );
+    }
+    if (Math.floor((fileData.length * 3) / 4) > 5 * 1024 * 1024) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'File must be under 5 MB.' },
+        { status: 400 }
+      );
+    }
+
     const rows = (await sql`
       insert into guest_documents
-        (guest_id, property_id, type, label, file_path, expires_at)
+        (guest_id, property_id, type, label, file_path, expires_at, content_type, file_data)
       values (
         ${guest.id}, ${guest.property_id}, ${type},
-        ${label}, ${fileName}, ${expiresAt}
+        ${label}, ${fileName}, ${expiresAt}, ${contentType}, ${fileData}
       )
       returning id, guest_id, property_id, type, label, file_path,
                 expires_at, uploaded_at, verified_by, verified_at

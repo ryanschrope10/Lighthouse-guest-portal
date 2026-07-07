@@ -16,7 +16,9 @@ export interface DocumentUploaderProps {
     file: File;
     documentType: string;
     expiryDate: string | null;
-  }) => void;
+    fileData: string; // base64 (no data: prefix)
+    contentType: string;
+  }) => Promise<{ ok: boolean; error?: string }> | void;
   className?: string;
 }
 
@@ -31,6 +33,8 @@ const ACCEPTED_TYPES = [
   "application/pdf",
 ];
 
+const MAX_BYTES = 5 * 1024 * 1024;
+
 const DOCUMENT_TYPE_OPTIONS = [
   { label: "Insurance", value: "insurance" },
   { label: "Vehicle Registration", value: "registration" },
@@ -38,6 +42,19 @@ const DOCUMENT_TYPE_OPTIONS = [
 ];
 
 const TYPES_REQUIRING_EXPIRY = ["insurance", "registration"];
+
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      // data:<mime>;base64,<data> -> <data>
+      resolve(result.includes(",") ? result.split(",")[1] : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -54,18 +71,14 @@ export function DocumentUploader({
   const [documentType, setDocumentType] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [uploadDone, setUploadDone] = useState(false);
 
-  // Clean up object URL on unmount / file change
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
-
-  // ---- File selection helpers ----
 
   const processFile = useCallback((file: File) => {
     setError(null);
@@ -75,19 +88,15 @@ export function DocumentUploader({
       setError("Please select a JPEG, PNG, WebP, or PDF file.");
       return;
     }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setError("File must be under 10 MB.");
+    if (file.size > MAX_BYTES) {
+      setError("File must be under 5 MB.");
       return;
     }
 
     setSelectedFile(file);
-
-    if (file.type.startsWith("image/")) {
-      setPreviewUrl(URL.createObjectURL(file));
-    } else {
-      setPreviewUrl(null);
-    }
+    setPreviewUrl(
+      file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+    );
   }, []);
 
   const handleDrop = useCallback(
@@ -111,48 +120,39 @@ export function DocumentUploader({
   const clearFile = useCallback(() => {
     setSelectedFile(null);
     setPreviewUrl(null);
-    setProgress(0);
     setUploading(false);
     setUploadDone(false);
     setError(null);
     if (inputRef.current) inputRef.current.value = "";
   }, []);
 
-  // ---- Mock upload ----
-
-  const handleUpload = useCallback(() => {
+  const handleUpload = useCallback(async () => {
     if (!selectedFile || !documentType) return;
 
     setUploading(true);
-    setProgress(0);
     setError(null);
-
-    // Simulate upload progress
-    let current = 0;
-    const interval = setInterval(() => {
-      current += Math.random() * 18 + 4;
-      if (current >= 100) {
-        current = 100;
-        clearInterval(interval);
-        setProgress(100);
-        setUploading(false);
-        setUploadDone(true);
-        onUploadComplete?.({
-          file: selectedFile,
-          documentType,
-          expiryDate: expiryDate || null,
-        });
-      } else {
-        setProgress(Math.round(current));
+    try {
+      const fileData = await readAsBase64(selectedFile);
+      const result = await onUploadComplete?.({
+        file: selectedFile,
+        documentType,
+        expiryDate: expiryDate || null,
+        fileData,
+        contentType: selectedFile.type,
+      });
+      if (result && result.ok === false) {
+        setError(result.error || "Upload failed. Please try again.");
+        return;
       }
-    }, 200);
+      setUploadDone(true);
+    } catch {
+      setError("Could not upload the file. Please try again.");
+    } finally {
+      setUploading(false);
+    }
   }, [selectedFile, documentType, expiryDate, onUploadComplete]);
 
-  // ---- Determine if expiry field is needed ----
-
   const showExpiry = TYPES_REQUIRING_EXPIRY.includes(documentType);
-
-  // ---- Render ----
 
   return (
     <div className={clsx("space-y-4", className)}>
@@ -189,7 +189,7 @@ export function DocumentUploader({
               or drag and drop here
             </p>
             <p className="mt-1 text-xs text-sand-400">
-              JPEG, PNG, WebP, or PDF (max 10 MB)
+              JPEG, PNG, WebP, or PDF (max 5 MB)
             </p>
           </div>
           <input
@@ -212,7 +212,6 @@ export function DocumentUploader({
           </button>
 
           <div className="flex items-center gap-3">
-            {/* Preview thumbnail or icon */}
             {previewUrl ? (
               <img
                 src={previewUrl}
@@ -239,30 +238,16 @@ export function DocumentUploader({
             </div>
           </div>
 
-          {/* Progress bar */}
-          {(uploading || uploadDone) && (
-            <div className="mt-3">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-sand-100">
-                <div
-                  className={clsx(
-                    "h-full rounded-full transition-all duration-300",
-                    uploadDone ? "bg-green-500" : "bg-gold-500",
-                  )}
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <p className="mt-1 text-xs text-sand-500">
-                {uploadDone ? "Upload complete" : `${progress}%`}
-              </p>
-            </div>
+          {uploadDone && (
+            <p className="mt-3 text-xs font-medium text-green-700">
+              Upload complete
+            </p>
           )}
         </div>
       )}
 
       {/* Error */}
-      {error && (
-        <p className="text-xs text-red-600">{error}</p>
-      )}
+      {error && <p className="text-xs text-red-600">{error}</p>}
 
       {/* Document type selector */}
       <Select

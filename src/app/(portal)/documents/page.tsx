@@ -443,7 +443,9 @@ function UploadsTab() {
       file: File;
       documentType: string;
       expiryDate: string | null;
-    }) => {
+      fileData: string;
+      contentType: string;
+    }): Promise<{ ok: boolean; error?: string }> => {
       try {
         const res = await fetch("/api/documents", {
           method: "POST",
@@ -453,17 +455,23 @@ function UploadsTab() {
             label: data.file.name,
             file_name: data.file.name,
             expires_at: data.expiryDate,
+            content_type: data.contentType,
+            file_data: data.fileData,
           }),
         });
         const json: ApiResponse<GuestDocument> = await res.json();
         if (json.error || !json.data) {
-          setError(json.error ?? "Could not save your document.");
-          return;
+          const msg = json.error ?? "Could not save your document.";
+          setError(msg);
+          return { ok: false, error: msg };
         }
         setDocs((prev) => [json.data as GuestDocument, ...prev]);
         setError(null);
+        return { ok: true };
       } catch {
-        setError("Could not reach the server.");
+        const msg = "Could not reach the server.";
+        setError(msg);
+        return { ok: false, error: msg };
       }
     },
     [],
@@ -502,8 +510,8 @@ function UploadsTab() {
           <div className="mb-3 flex items-start gap-2 rounded-lg border border-sand-200 bg-sand-50/60 p-3 text-xs text-sand-600">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sand-400" />
             <span>
-              This records your document details for the front desk. Please
-              also email or bring the actual file when you arrive.
+              Files are stored securely (max 5 MB) and are visible only to you
+              and the front desk.
             </span>
           </div>
           <DocumentUploader onUploadComplete={onUpload} />
@@ -561,6 +569,13 @@ function UploadsTab() {
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
+                    onClick={() =>
+                      window.open(
+                        `/api/documents/${doc.id}/file`,
+                        "_blank",
+                        "noopener",
+                      )
+                    }
                     className="flex h-9 w-9 items-center justify-center rounded-lg text-sand-400 hover:bg-sand-100 hover:text-sand-600"
                     aria-label="View"
                   >
