@@ -404,33 +404,6 @@ function ServedTab({ onCounts }: { onCounts: (n: number) => void }) {
 
 // ───────────────────────── My Uploads ─────────────────────────
 
-const uploadInitial: GuestDocument[] = [
-  {
-    id: "doc_001",
-    guest_id: "guest_001",
-    property_id: "holiday",
-    type: "insurance",
-    label: "RV Insurance — State Farm",
-    file_path: "/uploads/insurance_2026.pdf",
-    expires_at: "2026-09-20T00:00:00Z",
-    uploaded_at: "2025-11-15T09:00:00Z",
-    verified_by: "staff",
-    verified_at: "2025-11-16T10:30:00Z",
-  },
-  {
-    id: "doc_002",
-    guest_id: "guest_001",
-    property_id: "holiday",
-    type: "registration",
-    label: "Vehicle Registration",
-    file_path: "/uploads/registration_2026.pdf",
-    expires_at: "2026-12-31T00:00:00Z",
-    uploaded_at: "2026-02-01T14:00:00Z",
-    verified_by: null,
-    verified_at: null,
-  },
-];
-
 const typeIcons: Record<string, typeof FileText> = {
   insurance: ShieldCheck,
   registration: Car,
@@ -439,30 +412,80 @@ const typeIcons: Record<string, typeof FileText> = {
 };
 
 function UploadsTab() {
-  const [docs, setDocs] = useState<GuestDocument[]>(uploadInitial);
+  const [docs, setDocs] = useState<GuestDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/documents");
+      const json: ApiResponse<GuestDocument[]> = await res.json();
+      if (json.error || !json.data) {
+        setError(json.error ?? "Failed to load your documents.");
+        return;
+      }
+      setDocs(json.data);
+      setError(null);
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const onUpload = useCallback(
-    (data: { file: File; documentType: string; expiryDate: string | null }) => {
-      setDocs((prev) => [
-        {
-          id: `doc_${Date.now()}`,
-          guest_id: "guest_001",
-          property_id: "holiday",
-          type: data.documentType as GuestDocument["type"],
-          label: data.file.name,
-          file_path: `/uploads/${data.file.name}`,
-          expires_at: data.expiryDate
-            ? new Date(data.expiryDate).toISOString()
-            : null,
-          uploaded_at: new Date().toISOString(),
-          verified_by: null,
-          verified_at: null,
-        },
-        ...prev,
-      ]);
+    async (data: {
+      file: File;
+      documentType: string;
+      expiryDate: string | null;
+    }) => {
+      try {
+        const res = await fetch("/api/documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: data.documentType,
+            label: data.file.name,
+            file_name: data.file.name,
+            expires_at: data.expiryDate,
+          }),
+        });
+        const json: ApiResponse<GuestDocument> = await res.json();
+        if (json.error || !json.data) {
+          setError(json.error ?? "Could not save your document.");
+          return;
+        }
+        setDocs((prev) => [json.data as GuestDocument, ...prev]);
+        setError(null);
+      } catch {
+        setError("Could not reach the server.");
+      }
     },
     [],
   );
+
+  const onDelete = useCallback(async (id: string) => {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/documents/${id}`, { method: "DELETE" });
+      const json: ApiResponse<{ deleted: string }> = await res.json();
+      if (json.error) {
+        setError(json.error);
+        return;
+      }
+      setDocs((prev) => prev.filter((d) => d.id !== id));
+      setError(null);
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setDeletingId(null);
+    }
+  }, []);
 
   return (
     <div className="mt-4 space-y-6">
@@ -476,11 +499,29 @@ function UploadsTab() {
           </p>
         </CardHeader>
         <CardBody>
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-sand-200 bg-sand-50/60 p-3 text-xs text-sand-600">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sand-400" />
+            <span>
+              This records your document details for the front desk. Please
+              also email or bring the actual file when you arrive.
+            </span>
+          </div>
           <DocumentUploader onUploadComplete={onUpload} />
         </CardBody>
       </Card>
 
-      {docs.length === 0 ? (
+      {error && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="mt-10 flex justify-center">
+          <Spinner />
+        </div>
+      ) : docs.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="No documents"
@@ -527,10 +568,9 @@ function UploadsTab() {
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      setDocs((p) => p.filter((d) => d.id !== doc.id))
-                    }
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-sand-400 hover:bg-red-50 hover:text-red-500"
+                    disabled={deletingId === doc.id}
+                    onClick={() => onDelete(doc.id)}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-sand-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
                     aria-label="Delete"
                   >
                     <Trash2 className="h-4 w-4" />

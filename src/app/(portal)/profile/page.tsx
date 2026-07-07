@@ -6,7 +6,6 @@ import {
   Truck,
   Heart,
   FileText,
-  CreditCard,
   Settings,
   ChevronDown,
 } from "lucide-react";
@@ -16,7 +15,6 @@ import { ContactDetails } from "@/components/profile/contact-details";
 import { VehiclesSection } from "@/components/profile/vehicles-section";
 import { PreferencesSection } from "@/components/profile/preferences-section";
 import { DocumentsSummary } from "@/components/profile/documents-summary";
-import { PaymentMethodsSection } from "@/components/profile/payment-methods-section";
 import { AccountSettings } from "@/components/profile/account-settings";
 
 type SectionId =
@@ -24,7 +22,6 @@ type SectionId =
   | "vehicles"
   | "preferences"
   | "documents"
-  | "payments"
   | "account";
 
 interface Section {
@@ -58,12 +55,6 @@ const SECTIONS: Section[] = [
     label: "Documents",
     icon: FileText,
     component: DocumentsSummary,
-  },
-  {
-    id: "payments",
-    label: "Payment Methods",
-    icon: CreditCard,
-    component: PaymentMethodsSection,
   },
   {
     id: "account",

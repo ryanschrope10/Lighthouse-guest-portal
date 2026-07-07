@@ -1,90 +1,71 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { sql } from '@/lib/db';
+import { getCurrentGuest } from '@/lib/session';
+import { guestFacingError } from '@/lib/api-error';
 import type { GuestDocument, ApiResponse } from '@/types';
+
+const VALID_TYPES: GuestDocument['type'][] = [
+  'insurance',
+  'registration',
+  'license',
+  'signed_agreement',
+];
+
+interface DocumentRow {
+  id: string;
+  guest_id: string;
+  property_id: string;
+  type: GuestDocument['type'];
+  label: string | null;
+  file_path: string;
+  expires_at: string | null;
+  uploaded_at: string;
+  verified_by: string | null;
+  verified_at: string | null;
+}
+
+function toDocument(row: DocumentRow): GuestDocument {
+  return {
+    id: row.id,
+    guest_id: row.guest_id,
+    property_id: row.property_id,
+    type: row.type,
+    label: row.label,
+    file_path: row.file_path,
+    expires_at: row.expires_at,
+    uploaded_at: row.uploaded_at,
+    verified_by: row.verified_by,
+    verified_at: row.verified_at,
+  };
+}
 
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const guest = await getCurrentGuest();
 
-    if (!user) {
+    if (!guest) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // TODO: Replace with real Supabase query
-    // const { data: guest } = await supabase
-    //   .from('guests')
-    //   .select('id')
-    //   .eq('auth_user_id', user.id)
-    //   .single();
-    //
-    // const { data: documents, error } = await supabase
-    //   .from('guest_documents')
-    //   .select('*')
-    //   .eq('guest_id', guest.id)
-    //   .order('uploaded_at', { ascending: false });
-    //
-    // // Generate signed URLs for each document
-    // for (const doc of documents) {
-    //   const { data: urlData } = await supabase.storage
-    //     .from('guest-documents')
-    //     .createSignedUrl(doc.file_path, 3600);
-    //   doc.file_url = urlData?.signedUrl;
-    // }
-
-    const mockDocuments: GuestDocument[] = [
-      {
-        id: 'doc-001',
-        guest_id: 'guest-001',
-        property_id: 'property-001',
-        type: 'insurance',
-        label: 'RV Insurance Policy',
-        file_path: 'guest-001/insurance/policy-2025.pdf',
-        file_url: 'https://placeholder.storage/signed-url/insurance.pdf',
-        expires_at: '2026-01-15T00:00:00Z',
-        uploaded_at: '2025-05-01T10:00:00Z',
-        verified_by: null,
-        verified_at: null,
-      },
-      {
-        id: 'doc-002',
-        guest_id: 'guest-001',
-        property_id: 'property-001',
-        type: 'registration',
-        label: 'Vehicle Registration',
-        file_path: 'guest-001/registration/rv-reg-2025.pdf',
-        file_url: 'https://placeholder.storage/signed-url/registration.pdf',
-        expires_at: '2026-03-01T00:00:00Z',
-        uploaded_at: '2025-05-01T10:05:00Z',
-        verified_by: 'admin-001',
-        verified_at: '2025-05-02T09:00:00Z',
-      },
-      {
-        id: 'doc-003',
-        guest_id: 'guest-001',
-        property_id: 'property-001',
-        type: 'signed_agreement',
-        label: 'Park Rules Agreement',
-        file_path: 'guest-001/agreements/park-rules-signed.pdf',
-        file_url: 'https://placeholder.storage/signed-url/agreement.pdf',
-        expires_at: null,
-        uploaded_at: '2025-05-15T14:30:00Z',
-        verified_by: 'admin-001',
-        verified_at: '2025-05-15T15:00:00Z',
-      },
-    ];
+    const rows = (await sql`
+      select id, guest_id, property_id, type, label, file_path,
+             expires_at, uploaded_at, verified_by, verified_at
+      from guest_documents
+      where guest_id = ${guest.id}
+      order by uploaded_at desc
+    `) as DocumentRow[];
 
     return NextResponse.json<ApiResponse<GuestDocument[]>>(
-      { data: mockDocuments, error: null },
+      { data: rows.map(toDocument), error: null },
       { status: 200 }
     );
   } catch (error) {
     console.error('GET /api/documents error:', error);
     return NextResponse.json<ApiResponse<null>>(
-      { data: null, error: 'Internal server error' },
+      { data: null, error: guestFacingError(error) },
       { status: 500 }
     );
   }
@@ -92,104 +73,66 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const guest = await getCurrentGuest();
 
-    if (!user) {
+    if (!guest) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-    const type = formData.get('type') as string | null;
-    const label = formData.get('label') as string | null;
-    const propertyId = formData.get('property_id') as string | null;
-    const expiresAt = formData.get('expires_at') as string | null;
+    const body = await request.json();
 
-    if (!file) {
+    const type = body?.type as string | undefined;
+    if (!type || !VALID_TYPES.includes(type as GuestDocument['type'])) {
       return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: 'File is required' },
+        { data: null, error: `type must be one of: ${VALID_TYPES.join(', ')}` },
         { status: 400 }
       );
     }
 
-    const validTypes = ['insurance', 'registration', 'license', 'signed_agreement'];
-    if (!type || !validTypes.includes(type)) {
+    const fileName = typeof body?.file_name === 'string' ? body.file_name.trim() : '';
+    if (!fileName) {
       return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: `type must be one of: ${validTypes.join(', ')}` },
+        { data: null, error: 'file_name is required' },
         { status: 400 }
       );
     }
 
-    // Validate file size (10MB max)
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: 'File size must be under 10MB' },
-        { status: 400 }
-      );
+    const label = typeof body?.label === 'string' && body.label.trim() ? body.label.trim() : fileName;
+
+    // Normalize expiry to an ISO timestamp (or null).
+    let expiresAt: string | null = null;
+    if (body?.expires_at) {
+      const parsed = new Date(body.expires_at);
+      if (!Number.isNaN(parsed.getTime())) {
+        expiresAt = parsed.toISOString();
+      }
     }
 
-    // Validate file type
-    const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
-    if (!allowedMimeTypes.includes(file.type)) {
-      return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: 'File must be a PDF, JPEG, PNG, or WebP image' },
-        { status: 400 }
-      );
-    }
-
-    // TODO: Replace with real Supabase Storage + DB logic
-    // const { data: guest } = await supabase
-    //   .from('guests')
-    //   .select('id')
-    //   .eq('auth_user_id', user.id)
-    //   .single();
-    //
-    // const filePath = `${guest.id}/${type}/${Date.now()}-${file.name}`;
-    //
-    // const { error: uploadError } = await supabase.storage
-    //   .from('guest-documents')
-    //   .upload(filePath, file);
-    //
-    // const { data: doc, error } = await supabase
-    //   .from('guest_documents')
-    //   .insert({
-    //     guest_id: guest.id,
-    //     property_id: propertyId,
-    //     type,
-    //     label,
-    //     file_path: filePath,
-    //     expires_at: expiresAt,
-    //   })
-    //   .select()
-    //   .single();
-
-    const mockDocument: GuestDocument = {
-      id: `doc-${Date.now()}`,
-      guest_id: 'guest-001',
-      property_id: propertyId ?? 'property-001',
-      type: type as GuestDocument['type'],
-      label: label ?? file.name,
-      file_path: `guest-001/${type}/${Date.now()}-${file.name}`,
-      file_url: `https://placeholder.storage/signed-url/${file.name}`,
-      expires_at: expiresAt,
-      uploaded_at: new Date().toISOString(),
-      verified_by: null,
-      verified_at: null,
-    };
+    // NOTE: This track has no blob/file storage configured, so we persist
+    // document METADATA only. file_path records the original file name for
+    // reference; the actual file bytes are not stored anywhere yet.
+    const rows = (await sql`
+      insert into guest_documents
+        (guest_id, property_id, type, label, file_path, expires_at)
+      values (
+        ${guest.id}, ${guest.property_id}, ${type},
+        ${label}, ${fileName}, ${expiresAt}
+      )
+      returning id, guest_id, property_id, type, label, file_path,
+                expires_at, uploaded_at, verified_by, verified_at
+    `) as DocumentRow[];
 
     return NextResponse.json<ApiResponse<GuestDocument>>(
-      { data: mockDocument, error: null },
+      { data: toDocument(rows[0]), error: null },
       { status: 201 }
     );
   } catch (error) {
     console.error('POST /api/documents error:', error);
     return NextResponse.json<ApiResponse<null>>(
-      { data: null, error: 'Internal server error' },
+      { data: null, error: guestFacingError(error) },
       { status: 500 }
     );
   }

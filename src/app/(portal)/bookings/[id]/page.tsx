@@ -115,9 +115,34 @@ export default function BookingDetailPage() {
   const [newCheckout, setNewCheckout] = useState("");
   const [extendSubmitted, setExtendSubmitted] = useState(false);
 
-  // Cancel booking
+  // Cancel booking (staff-approval request — not an immediate cancel)
   const [showCancel, setShowCancel] = useState(false);
-  const [cancelConfirmed, setCancelConfirmed] = useState(false);
+  const [cancelState, setCancelState] = useState<
+    "idle" | "submitting" | "success" | "error"
+  >("idle");
+
+  async function submitCancellation() {
+    if (!booking) return;
+    setCancelState("submitting");
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json: ApiResponse<unknown> = await res.json().catch(() => ({
+        data: null,
+        error: "Something went wrong.",
+      }));
+      if (!res.ok || json.error) {
+        setCancelState("error");
+        return;
+      }
+      setCancelState("success");
+    } catch {
+      setCancelState("error");
+    }
+  }
 
   // Add-on request
   const [showAddon, setShowAddon] = useState(false);
@@ -289,11 +314,11 @@ export default function BookingDetailPage() {
               variant="danger"
               onClick={() => {
                 setShowCancel(true);
-                setCancelConfirmed(false);
+                setCancelState("idle");
               }}
             >
               <XCircle className="h-4 w-4" />
-              Cancel Booking
+              Request Cancellation
             </Button>
             <Button
               variant="secondary"
@@ -380,38 +405,67 @@ export default function BookingDetailPage() {
         )}
       </Modal>
 
-      {/* ── Cancel Booking Modal ── */}
+      {/* ── Request Cancellation Modal ── */}
       <Modal
         open={showCancel}
         onClose={() => setShowCancel(false)}
-        title="Cancel Booking"
+        title="Request Cancellation"
         footer={
-          !cancelConfirmed ? (
+          cancelState === "idle" || cancelState === "submitting" ? (
             <div className="flex gap-3 justify-end">
-              <Button variant="ghost" onClick={() => setShowCancel(false)}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowCancel(false)}
+                disabled={cancelState === "submitting"}
+              >
                 Keep Booking
               </Button>
               <Button
                 variant="danger"
-                onClick={() => setCancelConfirmed(true)}
+                onClick={submitCancellation}
+                disabled={cancelState === "submitting"}
               >
-                Confirm Cancellation
+                {cancelState === "submitting"
+                  ? "Requesting…"
+                  : "Request Cancellation"}
+              </Button>
+            </div>
+          ) : cancelState === "error" ? (
+            <div className="flex gap-3 justify-end">
+              <Button variant="ghost" onClick={() => setShowCancel(false)}>
+                Close
+              </Button>
+              <Button variant="danger" onClick={submitCancellation}>
+                Try Again
               </Button>
             </div>
           ) : undefined
         }
       >
-        {cancelConfirmed ? (
+        {cancelState === "success" ? (
+          <div className="flex flex-col items-center py-4 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-50">
+              <Check className="h-6 w-6 text-green-600" />
+            </div>
+            <p className="mt-3 text-base font-semibold text-gray-900">
+              Cancellation Requested
+            </p>
+            <p className="mt-1 text-sm text-sand-500">
+              The front desk will confirm your cancellation shortly. Your
+              booking stays active until they do.
+            </p>
+          </div>
+        ) : cancelState === "error" ? (
           <div className="flex flex-col items-center py-4 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
               <XCircle className="h-6 w-6 text-red-600" />
             </div>
             <p className="mt-3 text-base font-semibold text-gray-900">
-              Booking Cancelled
+              Couldn&apos;t submit your request
             </p>
             <p className="mt-1 text-sm text-sand-500">
-              Your booking has been cancelled. Any eligible refund will be
-              processed within 5-7 business days.
+              Something went wrong sending your cancellation request. Please
+              try again, or contact the front desk.
             </p>
           </div>
         ) : (
@@ -429,7 +483,7 @@ export default function BookingDetailPage() {
               </div>
             </div>
             <p className="text-sm text-sand-600">
-              Are you sure you want to cancel your booking at{" "}
+              Request to cancel your booking at{" "}
               <span className="font-medium text-gray-900">
                 {booking.site_or_room}
               </span>{" "}
@@ -438,7 +492,8 @@ export default function BookingDetailPage() {
                 {format(parseISO(booking.check_in), "MMM d")} -{" "}
                 {format(parseISO(booking.check_out), "MMM d, yyyy")}
               </span>
-              ?
+              ? The front desk will review and confirm — your booking stays
+              active until then.
             </p>
           </div>
         )}

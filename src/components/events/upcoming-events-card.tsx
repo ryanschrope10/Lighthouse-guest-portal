@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { CalendarDays, ChevronRight, MapPin } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { sql } from "@/lib/db";
 import { Card, CardBody } from "@/components/ui/card";
 import type { EventContent } from "@/types/events";
 
@@ -14,22 +14,18 @@ export default async function UpcomingEventsCard({
   propertyId,
   limit = 3,
 }: UpcomingEventsCardProps) {
-  const supabase = await createClient();
   const nowIso = new Date().toISOString();
 
-  const { data } = await supabase
-    .from("property_content")
-    .select(
-      "id, type, title, location, starts_at, ends_at, schedule"
-    )
-    .eq("property_id", propertyId)
-    .eq("active", true)
-    .in("type", ["event", "schedule"])
-    .or(`ends_at.gte.${nowIso},starts_at.gte.${nowIso}`)
-    .order("starts_at", { ascending: true, nullsFirst: false })
-    .limit(limit);
-
-  const items = (data ?? []) as Pick<
+  const items = (await sql`
+    select id, type, title, location, starts_at, ends_at, schedule
+    from property_content
+    where property_id = ${propertyId}
+      and active = true
+      and type in ('event', 'schedule')
+      and (ends_at >= ${nowIso} or starts_at >= ${nowIso})
+    order by starts_at asc nulls last
+    limit ${limit}
+  `) as Pick<
     EventContent,
     "id" | "type" | "title" | "location" | "starts_at" | "ends_at" | "schedule"
   >[];
