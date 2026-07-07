@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBookings } from '@/lib/newbook/data';
+import { getBookings, NoLinkedGuestError } from '@/lib/newbook/data';
 import { guestFacingError } from '@/lib/api-error';
 import type { Booking, BookingStatus, ApiResponse } from '@/types';
 
@@ -17,6 +17,12 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof NoLinkedGuestError) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'Please sign in to view your bookings.' },
+        { status: 401 }
+      );
+    }
     console.error('GET /api/bookings error:', error);
     return NextResponse.json<ApiResponse<null>>(
       {

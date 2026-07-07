@@ -1,95 +1,69 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { sql } from '@/lib/db';
+import { getCurrentGuest } from '@/lib/session';
 import type { Notification, ApiResponse } from '@/types';
+
+interface NotificationRow {
+  id: string;
+  property_id: string;
+  target_type: string;
+  target_id: string | null;
+  title: string;
+  body: string | null;
+  channel: string;
+  sent_at: string;
+  created_by: string | null;
+}
 
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const guest = await getCurrentGuest();
 
-    if (!user) {
+    if (!guest) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // TODO: Replace with real Supabase query
-    // const { data: guest } = await supabase
-    //   .from('guests')
-    //   .select('id')
-    //   .eq('auth_user_id', user.id)
-    //   .single();
-    //
-    // Notifications can target all_guests, specific_guest, or booking_group
-    // const { data: notifications, error } = await supabase
-    //   .from('notifications')
-    //   .select('*')
-    //   .or(`target_type.eq.all_guests,and(target_type.eq.specific_guest,target_id.eq.${guest.id})`)
-    //   .order('created_at', { ascending: false })
-    //   .limit(50);
-    //
-    // // Join with notification_reads to determine read status
-    // const { data: reads } = await supabase
-    //   .from('notification_reads')
-    //   .select('notification_id')
-    //   .eq('guest_id', guest.id);
-    // const readIds = new Set(reads?.map(r => r.notification_id));
-    // notifications?.forEach(n => { n.read = readIds.has(n.id); });
+    // A guest sees notifications addressed directly to them plus the
+    // property-wide broadcasts for the property they're linked to. Admin
+    // notifications are excluded.
+    const rows = (await sql`
+      select id, property_id, target_type, target_id, title, body,
+             channel, sent_at, created_by
+      from notifications
+      where property_id = ${guest.property_id}
+        and (
+          (target_type = 'guest' and target_id = ${guest.id})
+          or target_type in ('all_guests', 'property', 'booking_group')
+        )
+      order by sent_at desc
+      limit 50
+    `) as NotificationRow[];
 
-    const mockNotifications: Notification[] = [
-      {
-        id: 'notif-001',
-        property_id: 'property-001',
-        target_type: 'specific_guest',
-        target_id: 'guest-001',
-        title: 'Payment Received',
-        body: 'Your payment of $500.00 for Invoice #5001 has been received. Thank you!',
-        channel: 'both',
-        sent_at: '2025-05-28T14:35:00Z',
-        created_by: null,
-        read: true,
-      },
-      {
-        id: 'notif-002',
-        property_id: 'property-001',
-        target_type: 'all_guests',
-        target_id: null,
-        title: 'Pool Maintenance Notice',
-        body: 'The main pool will be closed for maintenance on June 5th from 8am to 12pm. The splash pad will remain open.',
-        channel: 'push',
-        sent_at: '2025-06-03T09:00:00Z',
-        created_by: 'admin-001',
-        read: false,
-      },
-      {
-        id: 'notif-003',
-        property_id: 'property-001',
-        target_type: 'specific_guest',
-        target_id: 'guest-001',
-        title: 'Invoice Due Soon',
-        body: 'Invoice #5002 for $250.00 is due on June 15th. Tap to view and pay.',
-        channel: 'both',
-        sent_at: '2025-06-10T08:00:00Z',
-        created_by: null,
-        read: false,
-      },
-      {
-        id: 'notif-004',
-        property_id: 'property-001',
-        target_type: 'all_guests',
-        target_id: null,
-        title: 'Food Truck Friday',
-        body: 'This Friday: Smokey BBQ & Taco Loco from 5-9pm at the main pavilion!',
-        channel: 'push',
-        sent_at: '2025-06-11T10:00:00Z',
-        created_by: 'admin-001',
-        read: false,
-      },
-    ];
+    const notifications: Notification[] = rows.map((r) => ({
+      id: r.id,
+      property_id: r.property_id,
+      target_type:
+        r.target_type === 'guest'
+          ? 'specific_guest'
+          : r.target_type === 'booking_group'
+            ? 'booking_group'
+            : 'all_guests',
+      target_id: r.target_id,
+      title: r.title,
+      body: r.body ?? '',
+      channel:
+        r.channel === 'email' || r.channel === 'both' ? r.channel : 'push',
+      sent_at: r.sent_at,
+      created_by: r.created_by,
+      // No read-tracking table exists on this track yet; surface as unread.
+      read: false,
+    }));
 
     return NextResponse.json<ApiResponse<Notification[]>>(
-      { data: mockNotifications, error: null },
+      { data: notifications, error: null },
       { status: 200 }
     );
   } catch (error) {
@@ -103,10 +77,9 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const guest = await getCurrentGuest();
 
-    if (!user) {
+    if (!guest) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Unauthorized' },
         { status: 401 }
@@ -115,33 +88,36 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    if (!body.notification_ids || !Array.isArray(body.notification_ids) || body.notification_ids.length === 0) {
+    if (
+      !body?.notification_ids ||
+      !Array.isArray(body.notification_ids) ||
+      body.notification_ids.length === 0
+    ) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'notification_ids array is required' },
         { status: 400 }
       );
     }
 
-    // TODO: Replace with real Supabase query
-    // const { data: guest } = await supabase
-    //   .from('guests')
-    //   .select('id')
-    //   .eq('auth_user_id', user.id)
-    //   .single();
-    //
-    // // Upsert read records (so marking as read is idempotent)
-    // const readRecords = body.notification_ids.map((notifId: string) => ({
-    //   notification_id: notifId,
-    //   guest_id: guest.id,
-    //   read_at: new Date().toISOString(),
-    // }));
-    //
-    // const { error } = await supabase
-    //   .from('notification_reads')
-    //   .upsert(readRecords, { onConflict: 'notification_id,guest_id' });
+    const ids = body.notification_ids.filter(
+      (v: unknown): v is string => typeof v === 'string'
+    );
+
+    // Scope to notifications this guest is actually allowed to see; return the
+    // subset that resolves to real rows. There is no read-tracking column on
+    // this track yet, so marking read is not persisted server-side.
+    const rows = (await sql`
+      select id from notifications
+      where property_id = ${guest.property_id}
+        and id = any(${ids}::uuid[])
+        and (
+          (target_type = 'guest' and target_id = ${guest.id})
+          or target_type in ('all_guests', 'property', 'booking_group')
+        )
+    `) as Array<{ id: string }>;
 
     return NextResponse.json<ApiResponse<{ marked_read: string[] }>>(
-      { data: { marked_read: body.notification_ids }, error: null },
+      { data: { marked_read: rows.map((r) => r.id) }, error: null },
       { status: 200 }
     );
   } catch (error) {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { sql } from '@/lib/db';
+import { getCurrentGuest } from '@/lib/session';
 import type { ApiResponse } from '@/types';
 
 interface PushSubscription {
@@ -12,10 +13,9 @@ interface PushSubscription {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const guest = await getCurrentGuest();
 
-    if (!user) {
+    if (!guest) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Unauthorized' },
         { status: 401 }
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
     const body: PushSubscription = await request.json();
 
-    if (!body.endpoint) {
+    if (!body?.endpoint) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Push subscription endpoint is required' },
         { status: 400 }
@@ -38,26 +38,21 @@ export async function POST(request: Request) {
       );
     }
 
-    // TODO: Replace with real Supabase query
-    // const { data: guest } = await supabase
-    //   .from('guests')
-    //   .select('id')
-    //   .eq('auth_user_id', user.id)
-    //   .single();
-    //
-    // // Upsert so re-subscribing from the same browser updates rather than duplicates
-    // const { error } = await supabase
-    //   .from('push_subscriptions')
-    //   .upsert(
-    //     {
-    //       guest_id: guest.id,
-    //       endpoint: body.endpoint,
-    //       p256dh_key: body.keys.p256dh,
-    //       auth_key: body.keys.auth,
-    //       updated_at: new Date().toISOString(),
-    //     },
-    //     { onConflict: 'endpoint' }
-    //   );
+    const subscriptionJson = JSON.stringify(body);
+
+    // push_subscriptions stores the whole subscription as jsonb (no dedicated
+    // endpoint column / unique constraint), so upsert manually: replace any
+    // existing row for this guest+endpoint, then insert the fresh one.
+    await sql`
+      delete from push_subscriptions
+      where guest_id = ${guest.id}
+        and subscription->>'endpoint' = ${body.endpoint}
+    `;
+
+    await sql`
+      insert into push_subscriptions (guest_id, subscription)
+      values (${guest.id}, ${subscriptionJson}::jsonb)
+    `;
 
     return NextResponse.json<ApiResponse<{ subscribed: boolean }>>(
       { data: { subscribed: true }, error: null },

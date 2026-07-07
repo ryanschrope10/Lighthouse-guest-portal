@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { getDemoGuest } from '@/lib/newbook/data';
+import { sql } from '@/lib/db';
+import { getDemoGuest, NoLinkedGuestError } from '@/lib/newbook/data';
+import { getCurrentGuest } from '@/lib/session';
 import { guestFacingError } from '@/lib/api-error';
-import type { Guest, ApiResponse } from '@/types';
+import type { Guest, GuestAddress, GuestPreferences, ApiResponse } from '@/types';
 
 export async function GET() {
   try {
@@ -21,6 +22,12 @@ export async function GET() {
     );
   } catch (error) {
     console.error('GET /api/guest/profile error:', error);
+    if (error instanceof NoLinkedGuestError) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     return NextResponse.json<ApiResponse<null>>(
       {
         data: null,
@@ -33,10 +40,9 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const guest = await getCurrentGuest();
 
-    if (!user) {
+    if (!guest) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'Unauthorized' },
         { status: 401 }
@@ -49,7 +55,7 @@ export async function PUT(request: Request) {
     const allowedFields = [
       'first_name', 'last_name', 'phone', 'address', 'preferences',
     ];
-    const updateKeys = Object.keys(body);
+    const updateKeys = Object.keys(body ?? {});
     const hasValidField = updateKeys.some((key) => allowedFields.includes(key));
 
     if (!hasValidField) {
@@ -59,41 +65,63 @@ export async function PUT(request: Request) {
       );
     }
 
-    // TODO: Replace with real Supabase query
-    // const { data: guest, error } = await supabase
-    //   .from('guests')
-    //   .update({
-    //     ...body,
-    //     updated_at: new Date().toISOString(),
-    //   })
-    //   .eq('auth_user_id', user.id)
-    //   .select()
-    //   .single();
+    // Only overwrite a column when the caller supplied that field; otherwise
+    // keep the existing value (guarded per-column by a `case when` in SQL).
+    const hasFirstName = 'first_name' in body;
+    const hasLastName = 'last_name' in body;
+    const hasPhone = 'phone' in body;
+    const hasAddress = 'address' in body;
+    const hasPreferences = 'preferences' in body;
+
+    const addressJson = hasAddress ? JSON.stringify(body.address ?? {}) : null;
+    const preferencesJson = hasPreferences
+      ? JSON.stringify(body.preferences ?? {})
+      : null;
+
+    const rows = (await sql`
+      update guests set
+        first_name  = case when ${hasFirstName} then ${body.first_name ?? null} else first_name end,
+        last_name   = case when ${hasLastName}  then ${body.last_name ?? null} else last_name end,
+        phone       = case when ${hasPhone}     then ${body.phone ?? null} else phone end,
+        address     = case when ${hasAddress}   then ${addressJson}::jsonb else address end,
+        preferences = case when ${hasPreferences} then ${preferencesJson}::jsonb else preferences end,
+        updated_at  = now()
+      where id = ${guest.id}
+      returning id, newbook_guest_id, email, first_name, last_name, phone,
+                address, preferences, created_at, updated_at
+    `) as Array<{
+      id: string;
+      newbook_guest_id: string | null;
+      email: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      phone: string | null;
+      address: GuestAddress | null;
+      preferences: GuestPreferences | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+
+    const row = rows[0];
+    if (!row) {
+      return NextResponse.json<ApiResponse<null>>(
+        { data: null, error: 'Guest not found' },
+        { status: 404 }
+      );
+    }
 
     const updatedGuest: Guest = {
-      id: 'guest-001',
-      auth_user_id: user.id,
-      newbook_guest_id: null,
-      email: user.email ?? '',
-      first_name: body.first_name ?? 'Jane',
-      last_name: body.last_name ?? 'Doe',
-      phone: body.phone ?? '(555) 123-4567',
-      address: body.address ?? {
-        street: '123 Main St',
-        city: 'Anytown',
-        state: 'TX',
-        zip: '75001',
-        country: 'US',
-      },
-      preferences: body.preferences ?? {
-        kids_count: 2,
-        kids_ages: [5, 8],
-        pets: [],
-        site_preferences: 'Pull-through, shaded',
-        special_needs: '',
-      },
-      created_at: '2025-01-15T10:00:00Z',
-      updated_at: new Date().toISOString(),
+      id: row.id,
+      auth_user_id: row.newbook_guest_id ? `newbook:${row.newbook_guest_id}` : '',
+      newbook_guest_id: row.newbook_guest_id,
+      email: row.email ?? '',
+      first_name: row.first_name,
+      last_name: row.last_name,
+      phone: row.phone,
+      address: row.address ?? {},
+      preferences: row.preferences ?? {},
+      created_at: row.created_at,
+      updated_at: row.updated_at,
     };
 
     return NextResponse.json<ApiResponse<Guest>>(
