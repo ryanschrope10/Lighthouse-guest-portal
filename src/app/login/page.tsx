@@ -26,14 +26,16 @@ function LoginForm() {
         body: JSON.stringify({ email, password }),
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         setError(data.error || 'Invalid email or password');
         return;
       }
 
+      // Admins land in the admin area; guests go to their intended page.
+      const dest = data?.user?.role === 'admin' ? '/admin' : redirectTo;
       router.refresh();
-      router.push(redirectTo);
+      router.push(dest);
     } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
