@@ -63,3 +63,24 @@ button, a, input, select, textarea {
 ::-webkit-scrollbar-thumb:hover {
   background: #c4b9a6;
 }
+
+/* Print: show only the open invoice (used by the invoice detail modal). */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .invoice-print,
+  .invoice-print * {
+    visibility: visible;
+  }
+  .invoice-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  .print-hide {
+    display: none !important;
+  }
+}

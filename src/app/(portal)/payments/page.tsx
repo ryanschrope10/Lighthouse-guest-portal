@@ -13,6 +13,8 @@ import type { Invoice, ApiResponse } from "@/types/index";
 import { Card, CardBody } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { InvoiceTable } from "@/components/invoice-table";
+import { InvoiceDetailModal } from "@/components/invoice-detail-modal";
+import { useGuest } from "@/lib/context/guest-context";
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -29,6 +31,8 @@ export default function PaymentsPage() {
   const [notice, setNotice] = useState<
     { type: "success" | "error"; text: string } | null
   >(null);
+  const [selected, setSelected] = useState<Invoice | null>(null);
+  const { guest, property } = useGuest();
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -238,7 +242,11 @@ export default function PaymentsPage() {
               {filteredUnpaid.length === 1 ? "invoice" : "invoices"}
             </span>
           </div>
-          <InvoiceTable invoices={filteredUnpaid} onPay={handlePayInvoice} />
+          <InvoiceTable
+            invoices={filteredUnpaid}
+            onPay={handlePayInvoice}
+            onView={setSelected}
+          />
         </section>
       )}
 
@@ -255,7 +263,7 @@ export default function PaymentsPage() {
           </span>
         </div>
         {filteredPaid.length > 0 ? (
-          <InvoiceTable invoices={filteredPaid} readonly />
+          <InvoiceTable invoices={filteredPaid} onView={setSelected} readonly />
         ) : (
           <Card>
             <CardBody className="py-8 text-center">
@@ -285,6 +293,27 @@ export default function PaymentsPage() {
             </CardBody>
           </Card>
         )}
+
+      {selected && (
+        <InvoiceDetailModal
+          invoice={selected}
+          guestName={
+            [guest?.first_name, guest?.last_name].filter(Boolean).join(" ") ||
+            null
+          }
+          guestEmail={guest?.email ?? null}
+          property={property}
+          onClose={() => setSelected(null)}
+          onPay={(inv) => {
+            setSelected(null);
+            sendPayLink(
+              inv.booking_id,
+              inv.booking?.site_or_room ?? "your booking",
+            );
+          }}
+          paying={busyBooking === selected.booking_id}
+        />
+      )}
     </div>
   );
 }

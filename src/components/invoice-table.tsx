@@ -1,7 +1,13 @@
 "use client";
 
 import { format } from "date-fns";
-import { AlertCircle, Clock, CheckCircle, ArrowRight } from "lucide-react";
+import {
+  AlertCircle,
+  Clock,
+  CheckCircle,
+  ArrowRight,
+  ChevronRight,
+} from "lucide-react";
 import clsx from "clsx";
 import type { Invoice, InvoiceStatus } from "@/types/index";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +16,8 @@ import { Button } from "@/components/ui/button";
 interface InvoiceTableProps {
   invoices: Invoice[];
   onPay?: (invoice: Invoice) => void;
+  /** Click an invoice row to open its full detail. */
+  onView?: (invoice: Invoice) => void;
   /** If true, hides the pay action column (for paid history) */
   readonly?: boolean;
 }
@@ -41,9 +49,12 @@ function formatCurrency(amount: number): string {
 export function InvoiceTable({
   invoices,
   onPay,
+  onView,
   readonly = false,
 }: InvoiceTableProps) {
   if (invoices.length === 0) return null;
+
+  const clickable = !!onView;
 
   return (
     <>
@@ -55,7 +66,13 @@ export function InvoiceTable({
           return (
             <div
               key={invoice.id}
-              className="rounded-xl border border-sand-200 bg-white p-4 shadow-sm"
+              onClick={() => onView?.(invoice)}
+              role={clickable ? "button" : undefined}
+              className={clsx(
+                "rounded-xl border border-sand-200 bg-white p-4 shadow-sm",
+                clickable &&
+                  "cursor-pointer transition-colors hover:border-gold-300 hover:bg-sand-50/50",
+              )}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -70,10 +87,15 @@ export function InvoiceTable({
                     </p>
                   )}
                 </div>
-                <Badge status={config.badge}>
-                  <StatusIcon className="mr-1 h-3 w-3" />
-                  {config.label}
-                </Badge>
+                <div className="flex items-center gap-1.5">
+                  <Badge status={config.badge}>
+                    <StatusIcon className="mr-1 h-3 w-3" />
+                    {config.label}
+                  </Badge>
+                  {clickable && (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-sand-400" />
+                  )}
+                </div>
               </div>
 
               <div className="mt-3 flex items-end justify-between">
@@ -102,7 +124,10 @@ export function InvoiceTable({
                 {!readonly && onPay && (
                   <Button
                     size="sm"
-                    onClick={() => onPay(invoice)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPay(invoice);
+                    }}
                     className="whitespace-nowrap"
                   >
                     Pay Now
@@ -137,6 +162,7 @@ export function InvoiceTable({
                   Action
                 </th>
               )}
+              {clickable && <th className="w-10 px-2 py-3" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-sand-100">
@@ -146,7 +172,11 @@ export function InvoiceTable({
               return (
                 <tr
                   key={invoice.id}
-                  className="transition-colors hover:bg-sand-50/50"
+                  onClick={() => onView?.(invoice)}
+                  className={clsx(
+                    "transition-colors hover:bg-sand-50/50",
+                    clickable && "cursor-pointer",
+                  )}
                 >
                   <td className="px-6 py-4">
                     <p className="text-sm font-medium text-gray-900">
@@ -179,10 +209,21 @@ export function InvoiceTable({
                   {!readonly && (
                     <td className="px-6 py-4 text-right">
                       {onPay && (
-                        <Button size="sm" onClick={() => onPay(invoice)}>
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPay(invoice);
+                          }}
+                        >
                           Pay Now
                         </Button>
                       )}
+                    </td>
+                  )}
+                  {clickable && (
+                    <td className="w-10 px-2 py-4 text-right">
+                      <ChevronRight className="ml-auto h-4 w-4 text-sand-400" />
                     </td>
                   )}
                 </tr>
