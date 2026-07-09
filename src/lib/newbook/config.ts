@@ -73,7 +73,7 @@ export function getDemoGuestId(): string {
  * NEWBOOK_PAY_TEMPLATE_ID) to switch on online payment. Until it's set,
  * the Pay button reports that online payment isn't enabled yet.
  */
-const PAY_LINK_TEMPLATE_ID = ''; // TODO: set to the park's pay-link template id
+const PAY_LINK_TEMPLATE_ID = '92'; // Holiday LIVE "Portal Pay Your Balance" template
 export function getPayTemplateId(): string {
   return process.env.NEWBOOK_PAY_TEMPLATE_ID || PAY_LINK_TEMPLATE_ID;
 }
