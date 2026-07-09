@@ -65,10 +65,23 @@ export function InvoiceDetailModal({
 }) {
   const b = invoice.booking;
   const status = STATUS[invoice.status];
-  const subtotal = invoice.line_items.reduce((s, li) => s + li.total, 0);
   const total = b?.total_amount ?? invoice.amount;
   const balance = invoice.status === "paid" ? 0 : b?.balance_due ?? invoice.amount;
   const paid = Math.max(0, Number((total - balance).toFixed(2)));
+  // Always show at least one line; if Newbook returned no breakdown, fall back
+  // to a single charge line for the booking total (avoids a bogus taxes line).
+  const items =
+    invoice.line_items.length > 0
+      ? invoice.line_items
+      : [
+          {
+            description: invoice.description || "Charges",
+            quantity: 1,
+            unit_price: total,
+            total,
+          },
+        ];
+  const subtotal = items.reduce((s, li) => s + li.total, 0);
   const taxesFees = Number((total - subtotal).toFixed(2));
 
   return (
@@ -176,28 +189,20 @@ export function InvoiceDetailModal({
               </tr>
             </thead>
             <tbody className="divide-y divide-sand-100">
-              {invoice.line_items.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-3 text-sand-500">
-                    {invoice.description || "Charges"}
+              {items.map((li, i) => (
+                <tr key={i}>
+                  <td className="py-2 pr-2 text-gray-900">{li.description}</td>
+                  <td className="py-2 text-center text-sand-600">
+                    {li.quantity}
+                  </td>
+                  <td className="py-2 text-right text-sand-600">
+                    {money(li.unit_price)}
+                  </td>
+                  <td className="py-2 text-right font-medium text-gray-900">
+                    {money(li.total)}
                   </td>
                 </tr>
-              ) : (
-                invoice.line_items.map((li, i) => (
-                  <tr key={i}>
-                    <td className="py-2 pr-2 text-gray-900">{li.description}</td>
-                    <td className="py-2 text-center text-sand-600">
-                      {li.quantity}
-                    </td>
-                    <td className="py-2 text-right text-sand-600">
-                      {money(li.unit_price)}
-                    </td>
-                    <td className="py-2 text-right font-medium text-gray-900">
-                      {money(li.total)}
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
