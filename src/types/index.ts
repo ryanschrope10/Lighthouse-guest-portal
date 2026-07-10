@@ -61,6 +61,10 @@ export interface Guest {
   phone: string | null;
   address: GuestAddress;
   preferences: GuestPreferences;
+  insurance_policies?: InsurancePolicy[];
+  equipment?: BookingEquipment[];
+  marketing_consent?: boolean;
+  transactional_consent?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -136,12 +140,62 @@ export interface Booking {
   group_booking_id: string | null;
   total_amount: number;
   balance_due: number;
+  eta?: string | null;
+  recurring_charges?: RecurringCharge[];
+  payment_plans?: PaymentPlan[];
+  additional_guests?: BookingGuestSummary[];
+  equipment?: BookingEquipment[];
+  required_checkin_document_ids?: (string | number)[];
   details: Record<string, unknown>;
   synced_at: string;
   created_at: string;
   // Joined data
   property?: Property;
   invoices?: Invoice[];
+}
+
+// --- Booking extras (from Newbook) ---
+
+export interface RecurringCharge {
+  description: string;
+  amount: number;
+  interval_label: string;
+  next_run: string | null;
+  period_from: string | null;
+  period_to: string | null;
+  status: string;
+}
+
+export interface PaymentPlan {
+  description: string | null;
+  amount: number;
+  due_date: string | null;
+  status: string | null;
+}
+
+export interface BookingGuestSummary {
+  name: string;
+  type: string | null;
+}
+
+export interface BookingEquipment {
+  name: string | null;
+  make: string | null;
+  model: string | null;
+  type: string | null;
+  length_ft: number | null;
+  width_ft: number | null;
+  height_ft: number | null;
+  registration: string | null;
+  registration_expires: string | null;
+  slideouts: string | null;
+}
+
+export interface InsurancePolicy {
+  provider: string | null;
+  policy_number: string | null;
+  type: string | null;
+  expires_at: string | null;
 }
 
 // --- Invoices ---
@@ -160,9 +214,16 @@ export interface Invoice {
   paid_at: string | null;
   description: string | null;
   line_items: InvoiceLineItem[];
+  taxes?: InvoiceTax[];
   synced_at: string;
   // Joined data
   booking?: Booking;
+}
+
+export interface InvoiceTax {
+  name: string;
+  amount: number;
+  inclusive: boolean;
 }
 
 export interface InvoiceLineItem {

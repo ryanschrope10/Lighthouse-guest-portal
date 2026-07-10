@@ -16,11 +16,19 @@ import type {
   Invoice,
   InvoiceStatus,
   InvoiceLineItem,
+  InvoiceTax,
   Property,
+  BookingEquipment,
+  InsurancePolicy,
 } from '@/types/index';
 import type { SignatureInfo, SignatureStatus } from '@/types/signature';
 
-import type { NewBookBooking, NewBookGuest } from './types';
+import type {
+  NewBookBooking,
+  NewBookGuest,
+  NewBookEquipment,
+  NewBookInsurancePolicy,
+} from './types';
 
 // Stable, deterministic portal IDs from Newbook IDs.
 export const bookingPortalId = (id: number | string) => `nb-bk-${id}`;
@@ -49,6 +57,37 @@ function contact(g: NewBookGuest | undefined, type: string): string | null {
   return hit?.content ?? null;
 }
 
+function mapEquipment(e: NewBookEquipment): BookingEquipment {
+  const ft = (v?: string) => {
+    const n = num(v);
+    return n > 0 ? n : null;
+  };
+  return {
+    name: e.equipment_name || null,
+    make: e.equipment_make || null,
+    model: e.equipment_model || null,
+    type: e.equipment_type_name || null,
+    length_ft: ft(e.equipment_length),
+    width_ft: ft(e.equipment_width),
+    height_ft: ft(e.equipment_height),
+    registration: e.equipment_registration || null,
+    registration_expires: e.equipment_registration_expiry
+      ? toIso(e.equipment_registration_expiry)
+      : null,
+    slideouts: e.slideouts && e.slideouts !== 'none' ? e.slideouts : null,
+  };
+}
+
+function mapInsurance(p: NewBookInsurancePolicy): InsurancePolicy {
+  const exp = p.expiry ?? p.expiry_date ?? null;
+  return {
+    provider: p.provider ?? p.insurer ?? null,
+    policy_number: p.policy_number ?? null,
+    type: p.type ?? null,
+    expires_at: exp ? toIso(exp) : null,
+  };
+}
+
 export function mapGuest(
   g: NewBookGuest
 ): Omit<Guest, 'id' | 'auth_user_id' | 'created_at' | 'updated_at'> {
@@ -66,6 +105,23 @@ export function mapGuest(
       country: g.country_code || undefined,
     },
     preferences: {},
+    equipment: (g.equipment ?? []).map(mapEquipment),
+    insurance_policies: [
+      ...(g.insurance_policies ?? []),
+      ...(g.equipment ?? []).flatMap((e) => e.insurance_policies ?? []),
+    ].map(mapInsurance),
+    marketing_consent: (() => {
+      const c = g.contact_details?.find(
+        (x) => x.type?.toLowerCase() === 'email' && x.content
+      );
+      return c ? !!c.allow_marketing : undefined;
+    })(),
+    transactional_consent: (() => {
+      const c = g.contact_details?.find(
+        (x) => x.type?.toLowerCase() === 'email' && x.content
+      );
+      return c ? !!c.allow_transactional : undefined;
+    })(),
   };
 }
 
@@ -138,6 +194,28 @@ function deriveInvoice(
     });
   }
 
+  // Taxes across all tariff nights, grouped by tax name (booking_total is
+  // already tax-inclusive; this is the itemized breakdown for display).
+  const taxByName = new Map<string, { amount: number; inclusive: boolean }>();
+  for (const t of b.tariffs_quoted ?? []) {
+    for (const tx of t.taxes ?? []) {
+      const key = tx.tax_name || 'Tax';
+      const cur = taxByName.get(key) ?? {
+        amount: 0,
+        inclusive: !!tx.tax_inclusive,
+      };
+      cur.amount += num(tx.tax_amount);
+      taxByName.set(key, cur);
+    }
+  }
+  const taxes: InvoiceTax[] = [...taxByName]
+    .map(([name, v]) => ({
+      name,
+      amount: Number(v.amount.toFixed(2)),
+      inclusive: v.inclusive,
+    }))
+    .filter((t) => Math.abs(t.amount) > 0.001);
+
   const amount = num(b.booking_total);
   const balance = num(b.account_balance);
   const departed = !!b.booking_checkedout || b.booking_status === 'Departed';
@@ -163,6 +241,7 @@ function deriveInvoice(
       `${b.site_name ?? b.category_name ?? 'Stay'}` +
       ` — ${b.booking_arrival.slice(0, 10)} to ${b.booking_departure.slice(0, 10)}`,
     line_items: lineItems,
+    taxes,
     synced_at: new Date().toISOString(),
   };
 }
@@ -251,6 +330,32 @@ export function mapBooking(
   });
   const signature = mapSignatureInfo(b);
 
+  const recurringCharges = (b.repeat_charges ?? [])
+    .filter((rc) => String(rc.guest_visible) === '1')
+    .map((rc) => ({
+      description: rc.description,
+      amount: num(rc.amount),
+      interval_label: rc.interval_label || rc.interval || 'Recurring',
+      next_run: rc.next_run ? toIso(rc.next_run) : null,
+      period_from: rc.period_from ? toIso(rc.period_from) : null,
+      period_to: rc.period_to ? toIso(rc.period_to) : null,
+      status: rc.status || 'Active',
+    }));
+  const paymentPlans = (b.payment_plans ?? []).map((p) => ({
+    description: p.description ?? null,
+    amount: num(p.amount),
+    due_date: (p.due_date ?? p.date)
+      ? toIso(String(p.due_date ?? p.date))
+      : null,
+    status: p.status ?? null,
+  }));
+  const additionalGuests = (b.guests ?? [])
+    .filter((g) => String(g.primary_client) !== '1')
+    .map((g) => ({
+      name: [g.firstname, g.lastname].filter(Boolean).join(' ') || 'Guest',
+      type: null,
+    }));
+
   return {
     id: bookingPortalId(b.booking_id),
     property_id: property.id,
@@ -266,6 +371,12 @@ export function mapBooking(
       : null,
     total_amount: num(b.booking_total),
     balance_due: num(b.account_balance),
+    eta: b.booking_eta || null,
+    recurring_charges: recurringCharges,
+    payment_plans: paymentPlans,
+    additional_guests: additionalGuests,
+    equipment: (lead?.equipment ?? []).map(mapEquipment),
+    required_checkin_document_ids: b.required_checkin_documents_ids ?? [],
     details: {
       adults: num(b.booking_adults),
       children: num(b.booking_children),

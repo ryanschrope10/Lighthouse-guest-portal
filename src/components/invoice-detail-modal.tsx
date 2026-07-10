@@ -82,6 +82,13 @@ export function InvoiceDetailModal({
           },
         ];
   const subtotal = items.reduce((s, li) => s + li.total, 0);
+  // Prefer Newbook's real per-tax breakdown when present. Newbook taxes are
+  // inclusive (already folded into the line totals / booking total), so we
+  // list them for transparency but do NOT add them on top of the subtotal.
+  const taxLines = (invoice.taxes ?? []).filter((t) => Math.abs(t.amount) > 0.01);
+  const hasItemizedTax = taxLines.length > 0;
+  // Fallback single "Taxes & fees" reconciliation line only when we have no
+  // itemized breakdown and the subtotal doesn't already equal the total.
   const taxesFees = Number((total - subtotal).toFixed(2));
 
   return (
@@ -210,9 +217,17 @@ export function InvoiceDetailModal({
         {/* Totals */}
         <div className="ml-auto max-w-xs space-y-1.5 border-t border-sand-100 pt-4">
           <Row label="Subtotal" value={money(subtotal)} />
-          {Math.abs(taxesFees) > 0.01 && (
-            <Row label="Taxes & fees" value={money(taxesFees)} />
-          )}
+          {hasItemizedTax
+            ? taxLines.map((t, i) => (
+                <Row
+                  key={i}
+                  label={`${t.name}${t.inclusive ? " (incl.)" : ""}`}
+                  value={money(t.amount)}
+                />
+              ))
+            : Math.abs(taxesFees) > 0.01 && (
+                <Row label="Taxes & fees" value={money(taxesFees)} />
+              )}
           <Row label="Total" value={money(total)} strong />
           {paid > 0.01 && <Row label="Amount paid" value={"-" + money(paid)} />}
           <div className="flex items-center justify-between border-t border-sand-200 pt-2 text-base font-bold text-gray-900">

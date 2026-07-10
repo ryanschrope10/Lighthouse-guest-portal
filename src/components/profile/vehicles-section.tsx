@@ -10,11 +10,36 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  ShieldCheck,
+  Building2,
+  AlertTriangle,
 } from "lucide-react";
+import { format, parseISO, isValid, differenceInCalendarDays } from "date-fns";
+import { useGuest } from "@/lib/context/guest-context";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import type { Vehicle } from "@/types/index";
+import { Badge } from "@/components/ui/badge";
+import type { Vehicle, BookingEquipment, InsurancePolicy } from "@/types/index";
+
+// Safely format an ISO date string; returns null for empty/invalid input.
+function formatDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = parseISO(value);
+  if (!isValid(parsed)) return null;
+  return format(parsed, "MMM d, yyyy");
+}
+
+// Returns "expired" | "soon" | null relative to today (30-day window).
+function expiryStatus(value: string | null | undefined): "expired" | "soon" | null {
+  if (!value) return null;
+  const parsed = parseISO(value);
+  if (!isValid(parsed)) return null;
+  const days = differenceInCalendarDays(parsed, new Date());
+  if (days < 0) return "expired";
+  if (days <= 30) return "soon";
+  return null;
+}
 
 const VEHICLE_TYPE_OPTIONS = [
   { label: "RV", value: "rv" },
@@ -81,6 +106,10 @@ const emptyForm: VehicleForm = {
 };
 
 export function VehiclesSection() {
+  const { guest } = useGuest();
+  const equipment = guest?.equipment ?? [];
+  const insurancePolicies = guest?.insurance_policies ?? [];
+
   const [vehicles, setVehicles] = useState<Vehicle[]>(MOCK_VEHICLES);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -356,6 +385,145 @@ export function VehiclesSection() {
           Add Vehicle
         </button>
       )}
+
+      {/* Equipment on file with the park (read-only, from Newbook reservation) */}
+      {equipment.length > 0 && (
+        <div className="space-y-3 border-t border-sand-200 pt-5">
+          <div className="flex items-center gap-2 text-sand-700">
+            <Building2 className="h-4 w-4" />
+            <span className="text-sm font-medium">On file with the park</span>
+          </div>
+          <p className="text-xs text-sand-500">
+            From your reservation. To change these, contact the park office.
+          </p>
+          {equipment.map((rig, i) => (
+            <EquipmentCard key={i} rig={rig} />
+          ))}
+        </div>
+      )}
+
+      {/* Insurance policies (read-only) */}
+      {insurancePolicies.length > 0 && (
+        <div className="space-y-3 border-t border-sand-200 pt-5">
+          <div className="flex items-center gap-2 text-sand-700">
+            <ShieldCheck className="h-4 w-4" />
+            <span className="text-sm font-medium">Insurance Policies</span>
+          </div>
+          {insurancePolicies.map((policy, i) => (
+            <InsuranceCard key={i} policy={policy} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EquipmentCard({ rig }: { rig: BookingEquipment }) {
+  const title =
+    rig.name ||
+    [rig.make, rig.model].filter(Boolean).join(" ") ||
+    "Equipment";
+  const dims = [
+    rig.length_ft != null ? `${rig.length_ft} ft L` : null,
+    rig.width_ft != null ? `${rig.width_ft} ft W` : null,
+    rig.height_ft != null ? `${rig.height_ft} ft H` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const regExpiry = formatDate(rig.registration_expires);
+  const regStatus = expiryStatus(rig.registration_expires);
+
+  return (
+    <div className="rounded-lg border border-sand-200 bg-sand-50/50 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <Truck className="h-5 w-5 text-sand-400" />
+        <div>
+          <p className="text-sm font-medium text-sand-900">{title}</p>
+          {rig.type && <p className="text-xs text-sand-500">{rig.type}</p>}
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        {(rig.make || rig.model) && (
+          <div>
+            <span className="text-sand-500">Make / Model</span>
+            <p className="font-medium text-sand-900">
+              {[rig.make, rig.model].filter(Boolean).join(" ")}
+            </p>
+          </div>
+        )}
+        {dims && (
+          <div>
+            <span className="text-sand-500">Dimensions</span>
+            <p className="font-medium text-sand-900">{dims}</p>
+          </div>
+        )}
+        {rig.registration && (
+          <div>
+            <span className="text-sand-500">Registration</span>
+            <p className="font-medium text-sand-900">{rig.registration}</p>
+          </div>
+        )}
+        {regExpiry && (
+          <div>
+            <span className="text-sand-500">Reg. Expires</span>
+            <p className="flex items-center gap-1.5 font-medium text-sand-900">
+              {regExpiry}
+              {regStatus && (
+                <Badge status={regStatus === "expired" ? "danger" : "warning"}>
+                  {regStatus === "expired" ? "Expired" : "Soon"}
+                </Badge>
+              )}
+            </p>
+          </div>
+        )}
+        {rig.slideouts && (
+          <div>
+            <span className="text-sand-500">Slideouts</span>
+            <p className="font-medium text-sand-900">{rig.slideouts}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InsuranceCard({ policy }: { policy: InsurancePolicy }) {
+  const expiry = formatDate(policy.expires_at);
+  const status = expiryStatus(policy.expires_at);
+
+  return (
+    <div className="rounded-lg border border-sand-200 bg-sand-50/50 px-4 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-sand-900">
+          {policy.provider || "Insurance policy"}
+        </p>
+        {status && (
+          <Badge status={status === "expired" ? "danger" : "warning"}>
+            <AlertTriangle className="mr-1 h-3 w-3" />
+            {status === "expired" ? "Expired" : "Expiring soon"}
+          </Badge>
+        )}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        {policy.policy_number && (
+          <div>
+            <span className="text-sand-500">Policy #</span>
+            <p className="font-medium text-sand-900">{policy.policy_number}</p>
+          </div>
+        )}
+        {policy.type && (
+          <div>
+            <span className="text-sand-500">Type</span>
+            <p className="font-medium text-sand-900">{policy.type}</p>
+          </div>
+        )}
+        {expiry && (
+          <div>
+            <span className="text-sand-500">Expires</span>
+            <p className="font-medium text-sand-900">{expiry}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

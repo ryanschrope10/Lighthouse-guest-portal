@@ -9,10 +9,14 @@ import {
   Pencil,
   Save,
   X,
+  BellRing,
+  Check,
+  Minus,
 } from "lucide-react";
 import { useGuest } from "@/lib/context/guest-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import type { Guest, GuestAddress } from "@/types/index";
 
 interface ContactForm {
@@ -195,6 +199,31 @@ export function ContactDetails() {
         </div>
       </div>
 
+      {/* Communication preferences (read-only, from Newbook) */}
+      {(guest?.marketing_consent !== undefined ||
+        guest?.transactional_consent !== undefined) && (
+        <div className="space-y-3 border-t border-sand-200 pt-5">
+          <div className="flex items-center gap-2 text-sand-700">
+            <BellRing className="h-4 w-4" />
+            <span className="text-sm font-medium">Communication Preferences</span>
+          </div>
+          <div className="space-y-2">
+            {guest?.marketing_consent !== undefined && (
+              <ConsentRow label="Marketing emails" enabled={guest.marketing_consent} />
+            )}
+            {guest?.transactional_consent !== undefined && (
+              <ConsentRow
+                label="Transactional emails"
+                enabled={guest.transactional_consent}
+              />
+            )}
+          </div>
+          <p className="text-xs text-sand-500">
+            Managed by the park. Contact the office to update your preferences.
+          </p>
+        </div>
+      )}
+
       {/* Save button */}
       {editing && (
         <div className="flex justify-end pt-2">
@@ -204,6 +233,27 @@ export function ContactDetails() {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+function ConsentRow({ label, enabled }: { label: string; enabled: boolean }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-sand-200 bg-sand-50/50 px-3 py-2.5">
+      <span className="text-sm text-sand-800">{label}</span>
+      <Badge status={enabled ? "success" : "neutral"}>
+        {enabled ? (
+          <>
+            <Check className="mr-1 h-3 w-3" />
+            On
+          </>
+        ) : (
+          <>
+            <Minus className="mr-1 h-3 w-3" />
+            Off
+          </>
+        )}
+      </Badge>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import {
   ArrowLeft,
@@ -14,6 +15,12 @@ import {
   Home,
   AlertTriangle,
   Check,
+  Clock,
+  Truck,
+  Users,
+  Repeat,
+  CalendarClock,
+  FileWarning,
 } from "lucide-react";
 import clsx from "clsx";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +43,10 @@ import type {
   Invoice,
   InvoiceStatus,
   ApiResponse,
+  BookingEquipment,
+  BookingGuestSummary,
+  RecurringCharge,
+  PaymentPlan,
 } from "@/types/index";
 
 // ─── Status helpers ──────────────────────────────────────────
@@ -204,6 +215,12 @@ export default function BookingDetailPage() {
         <CheckinReminder booking={booking} />
         <SignatureStatusCard booking={booking} />
         <LockCodeCard booking={booking} />
+        {booking.required_checkin_document_ids &&
+          booking.required_checkin_document_ids.length > 0 && (
+            <RequiredDocsCallout
+              count={booking.required_checkin_document_ids.length}
+            />
+          )}
       </div>
 
       {/* ── Booking Info ── */}
@@ -235,6 +252,13 @@ export default function BookingDetailPage() {
               "EEE, MMM d, yyyy 'at' h:mm a",
             )}
           />
+          {formatEta(booking.eta) && (
+            <InfoRow
+              icon={Clock}
+              label="Expected Arrival"
+              value={formatEta(booking.eta)!}
+            />
+          )}
           <InfoRow
             icon={Home}
             label="Booking Type"
@@ -244,6 +268,16 @@ export default function BookingDetailPage() {
           />
         </CardBody>
       </Card>
+
+      {/* ── Your Rig ── */}
+      {booking.equipment && booking.equipment.length > 0 && (
+        <RigCard equipment={booking.equipment} />
+      )}
+
+      {/* ── Additional Guests ── */}
+      {booking.additional_guests && booking.additional_guests.length > 0 && (
+        <AdditionalGuestsCard guests={booking.additional_guests} />
+      )}
 
       {/* ── Invoices ── */}
       <section className="mt-6">
@@ -286,6 +320,16 @@ export default function BookingDetailPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* ── Recurring Charges ── */}
+      {booking.recurring_charges && booking.recurring_charges.length > 0 && (
+        <RecurringChargesCard charges={booking.recurring_charges} />
+      )}
+
+      {/* ── Payment Schedule ── */}
+      {booking.payment_plans && booking.payment_plans.length > 0 && (
+        <PaymentPlansCard plans={booking.payment_plans} />
+      )}
 
       {booking.status === "checked_out" && (
         <div className="mt-6">
@@ -553,6 +597,51 @@ export default function BookingDetailPage() {
   );
 }
 
+// ─── Formatting helpers ──────────────────────────────────────
+function safeFormat(
+  iso: string | null | undefined,
+  fmt: string,
+): string | null {
+  if (!iso) return null;
+  try {
+    return format(parseISO(iso), fmt);
+  } catch {
+    return null;
+  }
+}
+
+// Newbook ETA may arrive as a full datetime OR a bare "HH:MM:SS" time.
+// parseISO can't handle time-only, so format that case directly.
+function formatEta(eta: string | null | undefined): string | null {
+  if (!eta) return null;
+  const timeOnly = eta.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeOnly) {
+    let h = Number(timeOnly[1]);
+    const m = timeOnly[2];
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${m} ${ampm}`;
+  }
+  return safeFormat(eta, "h:mm a");
+}
+
+function money(amount: number): string {
+  return `$${amount.toFixed(2)}`;
+}
+
+function statusBadgeFor(
+  status: string | null | undefined,
+): "success" | "warning" | "danger" | "info" | "neutral" {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("paid") || s.includes("complete") || s.includes("active"))
+    return "success";
+  if (s.includes("overdue") || s.includes("failed") || s.includes("cancel"))
+    return "danger";
+  if (s.includes("pending") || s.includes("due") || s.includes("upcoming"))
+    return "warning";
+  return "neutral";
+}
+
 // ─── Sub-components ──────────────────────────────────────────
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
@@ -621,6 +710,244 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
               </Button>
             )}
           </div>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+function RequiredDocsCallout({ count }: { count: number }) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <FileWarning className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-amber-800">
+          Documents required at check-in
+        </p>
+        <p className="mt-1 text-sm text-amber-700">
+          This booking requires {count} document{count === 1 ? "" : "s"} to be
+          completed before check-in. Please upload{" "}
+          {count === 1 ? "it" : "them"} under{" "}
+          <Link
+            href="/documents"
+            className="font-medium text-amber-800 underline hover:text-amber-900"
+          >
+            Documents
+          </Link>{" "}
+          or bring {count === 1 ? "it" : "them"} with you.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function RigCard({ equipment }: { equipment: BookingEquipment[] }) {
+  return (
+    <Card className="mt-5">
+      <CardBody>
+        <div className="flex items-center gap-2">
+          <Truck className="h-4 w-4 text-sand-400" />
+          <h2 className="text-base font-semibold text-gray-900">Your Rig</h2>
+        </div>
+        <div className="mt-3 space-y-4">
+          {equipment.map((rig, i) => (
+            <RigItem key={i} rig={rig} showDivider={i > 0} />
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+function RigItem({
+  rig,
+  showDivider,
+}: {
+  rig: BookingEquipment;
+  showDivider: boolean;
+}) {
+  const title =
+    rig.name ??
+    [rig.make, rig.model].filter(Boolean).join(" ") ??
+    "Equipment";
+  const dims = [
+    rig.length_ft != null ? `${rig.length_ft} ft L` : null,
+    rig.width_ft != null ? `${rig.width_ft} ft W` : null,
+    rig.height_ft != null ? `${rig.height_ft} ft H` : null,
+  ]
+    .filter(Boolean)
+    .join(" × ");
+  const regExpiry = safeFormat(rig.registration_expires, "MMM d, yyyy");
+
+  return (
+    <div
+      className={clsx(
+        showDivider && "border-t border-sand-100 pt-4",
+      )}
+    >
+      <p className="text-sm font-medium text-gray-900">
+        {title || "Equipment"}
+      </p>
+      <div className="mt-1.5 space-y-1">
+        {rig.type && (
+          <RigDetail label="Type" value={rig.type} />
+        )}
+        {dims && <RigDetail label="Dimensions" value={dims} />}
+        {rig.slideouts && (
+          <RigDetail label="Slide-outs" value={rig.slideouts} />
+        )}
+        {rig.registration && (
+          <RigDetail
+            label="Registration"
+            value={
+              regExpiry
+                ? `${rig.registration} (expires ${regExpiry})`
+                : rig.registration
+            }
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RigDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <p className="text-sm text-sand-600">
+      <span className="text-sand-500">{label}:</span>{" "}
+      <span className="font-medium text-gray-900">{value}</span>
+    </p>
+  );
+}
+
+function AdditionalGuestsCard({
+  guests,
+}: {
+  guests: BookingGuestSummary[];
+}) {
+  return (
+    <Card className="mt-5">
+      <CardBody>
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-sand-400" />
+          <h2 className="text-base font-semibold text-gray-900">
+            Who&apos;s Staying
+          </h2>
+        </div>
+        <ul className="mt-3 space-y-2">
+          {guests.map((g, i) => (
+            <li
+              key={i}
+              className="flex items-center justify-between gap-3 text-sm"
+            >
+              <span className="font-medium text-gray-900">{g.name}</span>
+              {g.type && (
+                <span className="text-xs capitalize text-sand-500">
+                  {g.type}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </CardBody>
+    </Card>
+  );
+}
+
+function RecurringChargesCard({ charges }: { charges: RecurringCharge[] }) {
+  return (
+    <Card className="mt-6">
+      <CardBody>
+        <div className="flex items-center gap-2">
+          <Repeat className="h-4 w-4 text-sand-400" />
+          <h2 className="text-base font-semibold text-gray-900">
+            Recurring Charges
+          </h2>
+        </div>
+        <div className="mt-3 space-y-3">
+          {charges.map((charge, i) => {
+            const nextRun = safeFormat(charge.next_run, "MMM d, yyyy");
+            return (
+              <div
+                key={i}
+                className={clsx(
+                  "flex items-start justify-between gap-3",
+                  i > 0 && "border-t border-sand-100 pt-3",
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900">
+                    {charge.description}
+                  </p>
+                  {nextRun && (
+                    <p className="mt-0.5 text-xs text-sand-500">
+                      Next charge: {nextRun}
+                    </p>
+                  )}
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  <p className="text-sm font-semibold text-gray-900">
+                    {money(charge.amount)}
+                  </p>
+                  {charge.interval_label && (
+                    <p className="text-xs text-sand-500">
+                      {charge.interval_label}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+function PaymentPlansCard({ plans }: { plans: PaymentPlan[] }) {
+  return (
+    <Card className="mt-6">
+      <CardBody>
+        <div className="flex items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-sand-400" />
+          <h2 className="text-base font-semibold text-gray-900">
+            Payment Schedule
+          </h2>
+        </div>
+        <div className="mt-3 space-y-3">
+          {plans.map((plan, i) => {
+            const dueDate = safeFormat(plan.due_date, "MMM d, yyyy");
+            return (
+              <div
+                key={i}
+                className={clsx(
+                  "flex items-start justify-between gap-3",
+                  i > 0 && "border-t border-sand-100 pt-3",
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900">
+                    {plan.description ?? "Installment"}
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {plan.status && (
+                      <Badge status={statusBadgeFor(plan.status)}>
+                        <span className="capitalize">{plan.status}</span>
+                      </Badge>
+                    )}
+                    {dueDate && (
+                      <span className="text-xs text-sand-500">
+                        Due {dueDate}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="flex-shrink-0 text-sm font-semibold text-gray-900">
+                  {money(plan.amount)}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </CardBody>
     </Card>
