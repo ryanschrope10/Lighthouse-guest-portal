@@ -116,7 +116,35 @@ export default function DashboardPage() {
   );
 
   const needsSignature = docsDue.rules > 0;
-  const attentionCount = (totalBalance > 0 ? 1 : 0) + (needsSignature ? 1 : 0);
+
+  // Registration / insurance from Newbook that's expired or expiring soon.
+  // Surfaced right in the attention block so an older, phone-first guest
+  // sees it the moment they open the app — no push/email needed.
+  const EXPIRY_WINDOW_DAYS = 45;
+  const expiringDocs = useMemo(() => {
+    const out: { label: string; days: number; date: Date }[] = [];
+    const consider = (label: string, iso?: string | null) => {
+      if (!iso) return;
+      // Date-only values (YYYY-MM-DD) must parse as local midnight, not UTC,
+      // or a guest in a behind-UTC timezone sees the date a day early.
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+        ? new Date(`${iso}T00:00:00`)
+        : new Date(iso);
+      if (Number.isNaN(d.getTime())) return;
+      const days = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+      if (days <= EXPIRY_WINDOW_DAYS) out.push({ label, days, date: d });
+    };
+    for (const e of guest?.equipment ?? [])
+      consider(`${e.name ?? "RV"} registration`, e.registration_expires);
+    for (const p of guest?.insurance_policies ?? [])
+      consider(`${p.provider ?? "Insurance"} policy`, p.expires_at);
+    return out.sort((a, b) => a.days - b.days);
+  }, [guest]);
+
+  const attentionCount =
+    (totalBalance > 0 ? 1 : 0) +
+    (needsSignature ? 1 : 0) +
+    (expiringDocs.length > 0 ? 1 : 0);
 
   const phone = property?.contact_info?.phone;
   const officeHours = property?.contact_info?.office_hours;
@@ -205,6 +233,47 @@ export default function DashboardPage() {
                   <ChevronRight className="h-5 w-5" />
                 </span>
               </Link>
+            </div>
+          )}
+
+          {expiringDocs.length > 0 && (
+            <div
+              className={
+                totalBalance > 0 || needsSignature
+                  ? "mt-5 border-t border-gold-200 pt-4"
+                  : "mt-4"
+              }
+            >
+              <p className="text-[17px] text-gold-950">
+                {expiringDocs.length === 1
+                  ? "A document on file is expiring"
+                  : "Some documents on file are expiring"}
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {expiringDocs.map((d, i) => (
+                  <li key={i} className="text-[15px] text-gold-900">
+                    <strong className="font-semibold">{d.label}</strong>{" "}
+                    {d.days < 0
+                      ? `expired ${format(d.date, "MMM d, yyyy")}`
+                      : d.days === 0
+                        ? "expires today"
+                        : `expires in ${d.days} day${
+                            d.days === 1 ? "" : "s"
+                          } (${format(d.date, "MMM d")})`}
+                  </li>
+                ))}
+              </ul>
+              {phone && (
+                <a
+                  href={`tel:${phone.replace(/[^\d+]/g, "")}`}
+                  className="mt-3 block"
+                >
+                  <span className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[10px] border-[1.5px] border-gold-600 bg-white text-lg font-semibold text-gold-700 transition-colors hover:bg-gold-50 active:bg-gold-100">
+                    Call the office to update
+                    <Phone className="h-5 w-5" />
+                  </span>
+                </a>
+              )}
             </div>
           )}
         </div>
