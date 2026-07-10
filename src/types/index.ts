@@ -40,6 +40,7 @@ export interface ContactInfo {
   email?: string;
   address?: string;
   emergency_phone?: string;
+  office_hours?: string;
 }
 
 export interface PropertyBranding {

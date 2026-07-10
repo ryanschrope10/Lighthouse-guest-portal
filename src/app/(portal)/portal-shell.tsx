@@ -3,24 +3,45 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { format } from "date-fns";
 import {
-  LayoutDashboard,
+  Home,
   CalendarDays,
-  Receipt,
+  CreditCard,
   FileText,
   User,
   LogOut,
+  MoreHorizontal,
+  Phone,
 } from "lucide-react";
 import clsx from "clsx";
 import { NotificationBell } from "@/components/notification-bell";
 import { useGuest } from "@/lib/context/guest-context";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/bookings", label: "Bookings", icon: CalendarDays },
-  { href: "/payments", label: "Payments", icon: Receipt },
+/**
+ * Portal shell, "one thing at a time" edition.
+ *
+ * - Mobile bottom nav goes from 5 items to 4 (Home, My Stay, Payments,
+ *   More) with 12px labels and 26px icons. Documents and Profile live
+ *   under More; documents are also reachable from the dashboard rows.
+ * - Desktop sidebar: 16px nav text, 14px vertical padding per item,
+ *   ownership line pinned to the bottom.
+ * - Desktop header shows today's date and a tap-to-call office chip.
+ */
+
+const sidebarItems = [
+  { href: "/dashboard", label: "Home", icon: Home },
+  { href: "/bookings", label: "My Stay", icon: CalendarDays },
+  { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/profile", label: "Profile", icon: User },
+  { href: "/profile", label: "My Profile", icon: User },
+] as const;
+
+const mobileItems = [
+  { href: "/dashboard", label: "Home", icon: Home },
+  { href: "/bookings", label: "My Stay", icon: CalendarDays },
+  { href: "/payments", label: "Payments", icon: CreditCard },
+  { href: "/profile", label: "More", icon: MoreHorizontal },
 ] as const;
 
 function monogram(name: string): string {
@@ -43,8 +64,6 @@ function BrandMark({
   color?: string;
   variant: "sidebar" | "header";
 }) {
-  // Preload the logo and only swap it in once it actually loads, so a
-  // missing file never flashes broken-image alt text.
   const [logoOk, setLogoOk] = useState(false);
 
   useEffect(() => {
@@ -67,7 +86,7 @@ function BrandMark({
         alt={name}
         className={clsx(
           "w-auto object-contain",
-          variant === "sidebar" ? "h-16 max-w-full" : "h-10 max-w-[160px]",
+          variant === "sidebar" ? "h-16 max-w-full" : "h-11 max-w-[180px]",
         )}
       />
     );
@@ -76,7 +95,7 @@ function BrandMark({
   return (
     <div className="flex min-w-0 items-center gap-3">
       <div
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base font-bold text-white"
         style={{ backgroundColor: color || "#b47a24" }}
       >
         {monogram(name)}
@@ -86,7 +105,7 @@ function BrandMark({
           "font-semibold text-gray-900",
           variant === "sidebar"
             ? "line-clamp-2 text-base leading-tight"
-            : "truncate text-base",
+            : "truncate text-lg",
         )}
       >
         {name}
@@ -98,12 +117,12 @@ function BrandMark({
 export function PortalShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { guest, property } = useGuest();
+  const { property } = useGuest();
 
   const parkName = property?.name ?? "Guest Portal";
   const logoUrl = property?.branding?.logo_url;
   const brandColor = property?.branding?.primary_color;
-  const guestName = guest?.first_name ?? "Guest";
+  const phone = property?.contact_info?.phone;
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -119,10 +138,10 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-sand-50 md:flex">
+    <div className="min-h-screen bg-white md:flex md:bg-sand-50">
       {/* ── Desktop Sidebar ── */}
-      <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r border-sand-200 bg-white">
-        <div className="flex h-20 items-center justify-center border-b border-sand-200 px-4">
+      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 border-r border-sand-200 bg-white">
+        <div className="flex h-24 items-center justify-center border-b border-sand-200 px-5">
           <BrandMark
             name={parkName}
             logoUrl={logoUrl}
@@ -131,33 +150,24 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           />
         </div>
 
-        <div className="px-6 py-4 border-b border-sand-100">
-          <p className="text-xs font-medium uppercase tracking-wide text-sand-500">
-            Welcome back
-          </p>
-          <p className="mt-0.5 text-sm font-semibold text-gray-900 truncate">
-            {guestName}
-          </p>
-        </div>
-
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map((item) => {
+        <nav className="flex-1 space-y-1.5 px-4 py-5">
+          {sidebarItems.map((item) => {
             const active = isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={clsx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  "flex items-center gap-3.5 rounded-[10px] px-4 py-3.5 text-base transition-colors",
                   active
-                    ? "bg-gold-50 text-gold-700"
-                    : "text-sand-600 hover:bg-sand-50 hover:text-gray-900"
+                    ? "bg-gold-50 font-semibold text-gold-700"
+                    : "font-medium text-sand-800 hover:bg-sand-50 hover:text-gray-900",
                 )}
               >
                 <item.icon
                   className={clsx(
-                    "h-5 w-5 flex-shrink-0",
-                    active ? "text-gold-600" : "text-sand-400"
+                    "h-[22px] w-[22px] flex-shrink-0",
+                    active ? "text-gold-600" : "text-sand-600",
                   )}
                 />
                 {item.label}
@@ -166,22 +176,29 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="border-t border-sand-200 p-3">
+        <div className="space-y-3 border-t border-sand-200 p-4">
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sand-600 transition-colors hover:bg-sand-50 hover:text-gray-900"
+            className="flex w-full items-center gap-3.5 rounded-[10px] px-4 py-3 text-base font-medium text-sand-800 transition-colors hover:bg-sand-50 hover:text-gray-900"
           >
-            <LogOut className="h-5 w-5 flex-shrink-0 text-sand-400" />
+            <LogOut className="h-[22px] w-[22px] flex-shrink-0 text-sand-600" />
             Log out
           </button>
+          <p className="px-4 pb-1 text-[13px] leading-relaxed text-sand-700">
+            Owned &amp; operated by
+            <br />
+            <strong className="font-semibold text-sand-900">
+              Lighthouse Communities
+            </strong>
+          </p>
         </div>
       </aside>
 
       {/* ── Main Content Area ── */}
-      <div className="flex flex-1 flex-col md:pl-60">
+      <div className="flex flex-1 flex-col md:pl-64">
         {/* Mobile top header */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-sand-200 bg-white px-4 md:hidden">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-sand-200 bg-white px-5 md:hidden">
           <div className="flex min-w-0 items-center">
             <BrandMark
               name={parkName}
@@ -194,46 +211,55 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Desktop top header */}
-        <header className="sticky top-0 z-30 hidden md:flex h-16 items-center justify-end border-b border-sand-200 bg-white px-6">
-          <NotificationBell unreadCount={3} />
+        <header className="sticky top-0 z-30 hidden md:flex h-[72px] items-center justify-between border-b border-sand-200 bg-white px-10">
+          <p className="text-base text-sand-800">
+            {format(new Date(), "EEEE, MMMM d, yyyy")}
+          </p>
+          <div className="flex items-center gap-4">
+            {phone && (
+              <a
+                href={`tel:${phone.replace(/[^\d+]/g, "")}`}
+                className="flex items-center gap-2 rounded-full border border-gold-200 bg-gold-50 px-4 py-2 text-[15px] font-semibold text-gold-700 transition-colors hover:bg-gold-100"
+              >
+                <Phone className="h-4 w-4" />
+                {phone}
+              </a>
+            )}
+            <NotificationBell unreadCount={3} />
+          </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 px-4 py-6 pb-24 md:px-6 md:py-8 md:pb-8">
+        <main className="flex-1 px-5 py-6 pb-28 md:px-10 md:py-10 md:pb-10">
           {children}
         </main>
       </div>
 
-      {/* ── Mobile Bottom Navigation ── */}
+      {/* ── Mobile Bottom Navigation — 4 items, bigger labels ── */}
       <nav
         className="fixed inset-x-0 bottom-0 z-40 border-t border-sand-200 bg-white md:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
-        <div className="flex h-16 items-center justify-around">
-          {navItems.map((item) => {
+        <div className="flex h-[72px] items-center">
+          {mobileItems.map((item) => {
             const active = isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={clsx(
-                  "flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-lg px-3 py-1 transition-colors",
-                  active
-                    ? "text-gold-600"
-                    : "text-sand-500 active:text-gold-600"
+                  "flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 transition-colors",
+                  active ? "text-gold-700" : "text-sand-700 active:text-gold-700",
                 )}
               >
                 <item.icon
-                  className={clsx(
-                    "h-6 w-6",
-                    active ? "text-gold-600" : "text-sand-500"
-                  )}
+                  className="h-[26px] w-[26px]"
                   strokeWidth={active ? 2.25 : 1.75}
                 />
                 <span
                   className={clsx(
-                    "text-[10px] leading-tight",
-                    active ? "font-semibold text-gold-600" : "font-medium text-sand-500"
+                    "text-xs leading-tight",
+                    active ? "font-bold" : "font-medium",
                   )}
                 >
                   {item.label}
