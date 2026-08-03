@@ -180,19 +180,30 @@ function RulesTab({ onCounts }: { onCounts: (n: number) => void }) {
           </p>
         </CardHeader>
         <CardBody>
-          <p className="text-sm text-sand-700">{doc.intro}</p>
-          <div className="mt-4 max-h-72 space-y-4 overflow-y-auto rounded-lg border border-sand-200 bg-sand-50/50 p-4">
-            {doc.sections.map((s) => (
-              <div key={s.heading}>
-                <p className="text-sm font-semibold text-gray-900">
-                  {s.heading}
-                </p>
-                <p className="mt-1 text-sm leading-relaxed text-sand-700">
-                  {s.body}
-                </p>
+          {doc.html ? (
+            // Rules body sourced from the park's Newbook template (#94).
+            // First-party, staff-authored content.
+            <div
+              className="prose prose-sm max-h-72 max-w-none overflow-y-auto rounded-lg border border-sand-200 bg-sand-50/50 p-4 text-sm leading-relaxed text-sand-700 [&_a]:text-gold-700 [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:mt-1 [&_ul]:list-disc [&_ul]:pl-5"
+              dangerouslySetInnerHTML={{ __html: doc.html }}
+            />
+          ) : (
+            <>
+              <p className="text-sm text-sand-700">{doc.intro}</p>
+              <div className="mt-4 max-h-72 space-y-4 overflow-y-auto rounded-lg border border-sand-200 bg-sand-50/50 p-4">
+                {doc.sections.map((s) => (
+                  <div key={s.heading}>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {s.heading}
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-sand-700">
+                      {s.body}
+                    </p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </CardBody>
       </Card>
 
@@ -442,6 +453,7 @@ function UploadsTab() {
     async (data: {
       file: File;
       documentType: string;
+      customLabel: string | null;
       expiryDate: string | null;
       fileData: string;
       contentType: string;
@@ -452,7 +464,7 @@ function UploadsTab() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: data.documentType,
-            label: data.file.name,
+            label: data.customLabel || data.file.name,
             file_name: data.file.name,
             expires_at: data.expiryDate,
             content_type: data.contentType,

@@ -9,6 +9,7 @@ const VALID_TYPES: GuestDocument['type'][] = [
   'registration',
   'license',
   'signed_agreement',
+  'other',
 ];
 
 interface DocumentRow {

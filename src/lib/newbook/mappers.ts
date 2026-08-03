@@ -316,6 +316,138 @@ function mapSignatureInfo(b: NewBookBooking): SignatureInfo {
 }
 
 /** Map a Newbook booking to a fully-populated portal Booking. */
+// ── Monthly statement breakout ─────────────────────────────────────────────
+// Long-stay reservations bill monthly, but Newbook exposes the schedule as
+// EITHER payment-plan installments (authoritative: amount + due date + paid
+// status) OR a monthly repeat charge (a rate + a period, no per-month paid
+// flag). We turn either into one invoice per month so the portal shows a real
+// monthly statement list instead of a single lump sum. Returns null when the
+// booking has no monthly schedule (→ keep the single derived invoice).
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+function monthLabel(d: Date): string {
+  return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function paymentPlanStatus(
+  raw: string | null | undefined,
+  dueIso: string | null
+): InvoiceStatus {
+  const s = (raw ?? '').toLowerCase();
+  if (/paid|complete|processed|success|settled/.test(s)) return 'paid';
+  if (dueIso && new Date(dueIso) < new Date()) return 'overdue';
+  return 'pending';
+}
+
+function addMonths(base: Date, n: number): Date {
+  const r = new Date(base);
+  const day = base.getDate();
+  r.setMonth(r.getMonth() + n);
+  if (r.getDate() < day) r.setDate(0); // clamp e.g. Jan 31 + 1mo → Feb 28
+  return r;
+}
+
+function monthlySchedule(fromIso: string, toIso2: string): Date[] {
+  const from = new Date(fromIso);
+  const to = new Date(toIso2);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return [];
+  const out: Date[] = [];
+  for (let i = 0; i < 60; i++) {
+    const d = addMonths(from, i);
+    if (d > to) break;
+    out.push(d);
+  }
+  return out;
+}
+
+function deriveScheduledInvoices(
+  b: NewBookBooking,
+  base: Invoice
+): Invoice[] | null {
+  const money = (n: number) => Number(n.toFixed(2));
+
+  // 1) Payment-plan installments — authoritative amounts, dates and status.
+  const plans = b.payment_plans ?? [];
+  if (plans.length >= 2) {
+    return plans.map((p, i) => {
+      const amount = money(num(p.amount));
+      const raw = p.due_date ?? p.date;
+      const due = raw ? toIso(String(raw)) || null : null;
+      const status = paymentPlanStatus(p.status, due);
+      const label =
+        (p.description ?? '').trim() || `Payment ${i + 1} of ${plans.length}`;
+      return {
+        ...base,
+        id: `${base.id}-pp-${i + 1}`,
+        newbook_invoice_id: `${b.booking_id}-pp-${i + 1}`,
+        amount,
+        status,
+        due_date: due,
+        paid_at: status === 'paid' ? due : null,
+        description: label,
+        line_items: [
+          { description: label, quantity: 1, unit_price: amount, total: amount },
+        ],
+        taxes: [],
+      };
+    });
+  }
+
+  // 2) Monthly repeat charge — expand across its period. Newbook gives no
+  //    per-month paid flag, so we apply what's already been paid earliest-first.
+  const monthly = (b.repeat_charges ?? []).find(
+    (rc) =>
+      String(rc.guest_visible) === '1' &&
+      /month/i.test(`${rc.interval_label ?? ''} ${rc.interval ?? ''}`)
+  );
+  if (monthly) {
+    const fromIso = toIso(monthly.period_from ?? b.booking_arrival);
+    const toIso2 = toIso(monthly.period_to ?? b.booking_departure);
+    const dates = monthlySchedule(fromIso, toIso2);
+    if (dates.length >= 2) {
+      const amount = money(num(monthly.amount));
+      let paidRemaining = Math.max(
+        0,
+        num(b.booking_total) - num(b.account_balance)
+      );
+      const now = new Date();
+      return dates.map((d, i) => {
+        const dIso = d.toISOString();
+        let status: InvoiceStatus;
+        if (paidRemaining >= amount - 0.001) {
+          status = 'paid';
+          paidRemaining -= amount;
+        } else if (paidRemaining > 0.001) {
+          status = 'partial';
+          paidRemaining = 0;
+        } else {
+          status = d < now ? 'overdue' : 'pending';
+        }
+        const label = `${monthly.description || 'Monthly charge'} — ${monthLabel(d)}`;
+        return {
+          ...base,
+          id: `${base.id}-m-${i + 1}`,
+          newbook_invoice_id: `${b.booking_id}-m-${i + 1}`,
+          amount,
+          status,
+          due_date: dIso,
+          paid_at: status === 'paid' ? dIso : null,
+          description: label,
+          line_items: [
+            { description: label, quantity: 1, unit_price: amount, total: amount },
+          ],
+          taxes: [],
+        };
+      });
+    }
+  }
+
+  return null;
+}
+
 export function mapBooking(
   b: NewBookBooking,
   property: Property,
@@ -328,6 +460,7 @@ export function mapBooking(
     property_id: property.id,
     guest_id,
   });
+  const scheduledInvoices = deriveScheduledInvoices(b, invoice);
   const signature = mapSignatureInfo(b);
 
   const recurringCharges = (b.repeat_charges ?? [])
@@ -399,6 +532,6 @@ export function mapBooking(
     synced_at: new Date().toISOString(),
     created_at: toIso(b.booking_placed) || new Date().toISOString(),
     property,
-    invoices: [invoice],
+    invoices: scheduledInvoices ?? [invoice],
   };
 }

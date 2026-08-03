@@ -77,3 +77,13 @@ const PAY_LINK_TEMPLATE_ID = '92'; // Holiday LIVE "Portal Pay Your Balance" tem
 export function getPayTemplateId(): string {
   return process.env.NEWBOOK_PAY_TEMPLATE_ID || PAY_LINK_TEMPLATE_ID;
 }
+
+/**
+ * The Newbook contact-template id holding the park's Rules & Regulations
+ * body. The guest-facing rules page renders this template's contents (falling
+ * back to the built-in copy if it can't be fetched). Holiday = #94.
+ */
+const RULES_TEMPLATE_ID = '94';
+export function getRulesTemplateId(): string {
+  return process.env.NEWBOOK_RULES_TEMPLATE_ID || RULES_TEMPLATE_ID;
+}

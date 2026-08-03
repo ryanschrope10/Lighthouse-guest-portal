@@ -78,6 +78,15 @@ const bookingTypeLabels: Record<string, string> = {
   other: "Other",
 };
 
+// Lodging accommodations have a door/lock and therefore an access code.
+// RV sites (and anything not explicitly lodging) don't, so the access-code
+// card is hidden for them.
+const LODGING_BOOKING_TYPES: Booking["booking_type"][] = [
+  "motel",
+  "cabin",
+  "mobile_home",
+];
+
 const ADDON_OPTIONS = [
   { label: "Propane Delivery", value: "propane_delivery" },
   { label: "Early Check-in", value: "early_checkin" },
@@ -214,7 +223,9 @@ export default function BookingDetailPage() {
       <div className="mt-4 space-y-3">
         <CheckinReminder booking={booking} />
         <SignatureStatusCard booking={booking} />
-        <LockCodeCard booking={booking} />
+        {LODGING_BOOKING_TYPES.includes(booking.booking_type) && (
+          <LockCodeCard booking={booking} />
+        )}
         {booking.required_checkin_document_ids &&
           booking.required_checkin_document_ids.length > 0 && (
             <RequiredDocsCallout

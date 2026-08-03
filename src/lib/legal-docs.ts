@@ -26,6 +26,12 @@ export interface RulesDoc {
   effectiveDate: string;
   intro: string;
   sections: RulesSection[];
+  /**
+   * When set, the rules body comes from a Newbook contact template (HTML)
+   * and is rendered instead of `sections`. `sections` stays as the offline
+   * fallback.
+   */
+  html?: string | null;
 }
 
 export type ServedCategory = "notice" | "policy" | "billing";

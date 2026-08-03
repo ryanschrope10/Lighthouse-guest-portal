@@ -8,9 +8,11 @@ import {
   Search,
   AlertCircle,
   Mail,
+  RefreshCw,
 } from "lucide-react";
 import type { Invoice, ApiResponse } from "@/types/index";
 import { Card, CardBody } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { InvoiceTable } from "@/components/invoice-table";
 import { InvoiceDetailModal } from "@/components/invoice-detail-modal";
@@ -32,6 +34,9 @@ export default function PaymentsPage() {
     { type: "success" | "error"; text: string } | null
   >(null);
   const [selected, setSelected] = useState<Invoice | null>(null);
+  const [autoPayStatus, setAutoPayStatus] = useState<
+    "idle" | "sending" | "requested"
+  >("idle");
   const { guest, property } = useGuest();
 
   const load = useCallback(async () => {
@@ -132,6 +137,45 @@ export default function PaymentsPage() {
 
   const hasBalance = totalBalanceDue > 0;
 
+  // AutoPay enrollment attaches to one of the guest's bookings (addon_requests
+  // infra requires a booking FK). Use any booking the guest has an invoice for.
+  const autoPayBookingId = useMemo(
+    () => invoices?.find((inv) => inv.booking_id)?.booking_id ?? null,
+    [invoices],
+  );
+
+  const requestAutoPay = useCallback(async () => {
+    if (!autoPayBookingId || autoPayStatus !== "idle") return;
+    setAutoPayStatus("sending");
+    setNotice(null);
+    try {
+      const res = await fetch("/api/payments/autopay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id: autoPayBookingId }),
+      });
+      const json: ApiResponse<{ message?: string }> = await res.json();
+      if (!res.ok || json.error) {
+        setNotice({
+          type: "error",
+          text: json.error ?? "We couldn't submit your AutoPay request.",
+        });
+        setAutoPayStatus("idle");
+        return;
+      }
+      setNotice({
+        type: "success",
+        text:
+          json.data?.message ??
+          "AutoPay requested — the front desk will follow up shortly.",
+      });
+      setAutoPayStatus("requested");
+    } catch {
+      setNotice({ type: "error", text: "Could not reach the server." });
+      setAutoPayStatus("idle");
+    }
+  }, [autoPayBookingId, autoPayStatus]);
+
   if (invoices === null && !loadError) {
     return (
       <div className="mx-auto flex max-w-5xl justify-center py-20">
@@ -213,6 +257,36 @@ export default function PaymentsPage() {
             <p className="mt-1 text-sm text-sand-500">
               You have no outstanding invoices. You&apos;re all set!
             </p>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* AutoPay enrollment */}
+      {autoPayBookingId && (
+        <Card>
+          <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-50">
+                <RefreshCw className="h-5 w-5 text-gold-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">AutoPay</p>
+                <p className="mt-0.5 text-sm text-sand-500">
+                  Have your balance charged automatically each cycle. Request it
+                  and the front desk will get you set up.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="shrink-0"
+              disabled={autoPayStatus !== "idle"}
+              loading={autoPayStatus === "sending"}
+              onClick={requestAutoPay}
+            >
+              {autoPayStatus === "requested" ? "Requested" : "Request AutoPay"}
+            </Button>
           </CardBody>
         </Card>
       )}

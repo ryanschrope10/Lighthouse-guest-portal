@@ -15,6 +15,8 @@ export interface DocumentUploaderProps {
   onUploadComplete?: (data: {
     file: File;
     documentType: string;
+    /** Free-text label the guest typed when documentType === "other". */
+    customLabel: string | null;
     expiryDate: string | null;
     fileData: string; // base64 (no data: prefix)
     contentType: string;
@@ -39,6 +41,7 @@ const DOCUMENT_TYPE_OPTIONS = [
   { label: "Insurance", value: "insurance" },
   { label: "Vehicle Registration", value: "registration" },
   { label: "Driver's License", value: "license" },
+  { label: "Other", value: "other" },
 ];
 
 const TYPES_REQUIRING_EXPIRY = ["insurance", "registration"];
@@ -69,6 +72,7 @@ export function DocumentUploader({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [documentType, setDocumentType] = useState("");
+  const [customLabel, setCustomLabel] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,8 +130,15 @@ export function DocumentUploader({
     if (inputRef.current) inputRef.current.value = "";
   }, []);
 
+  const isOther = documentType === "other";
+  const trimmedCustomLabel = customLabel.trim();
+
   const handleUpload = useCallback(async () => {
     if (!selectedFile || !documentType) return;
+    if (isOther && !trimmedCustomLabel) {
+      setError("Please enter a document type.");
+      return;
+    }
 
     setUploading(true);
     setError(null);
@@ -136,6 +147,7 @@ export function DocumentUploader({
       const result = await onUploadComplete?.({
         file: selectedFile,
         documentType,
+        customLabel: isOther ? trimmedCustomLabel : null,
         expiryDate: expiryDate || null,
         fileData,
         contentType: selectedFile.type,
@@ -150,7 +162,14 @@ export function DocumentUploader({
     } finally {
       setUploading(false);
     }
-  }, [selectedFile, documentType, expiryDate, onUploadComplete]);
+  }, [
+    selectedFile,
+    documentType,
+    isOther,
+    trimmedCustomLabel,
+    expiryDate,
+    onUploadComplete,
+  ]);
 
   const showExpiry = TYPES_REQUIRING_EXPIRY.includes(documentType);
 
@@ -258,6 +277,17 @@ export function DocumentUploader({
         onChange={(e) => setDocumentType(e.target.value)}
       />
 
+      {/* Free-text type when "Other" is selected */}
+      {isOther && (
+        <Input
+          label="Document name"
+          placeholder="e.g. Pet vaccination record"
+          value={customLabel}
+          onChange={(e) => setCustomLabel(e.target.value)}
+          helperText="Tell us what this document is."
+        />
+      )}
+
       {/* Optional expiry date */}
       {showExpiry && (
         <Input
@@ -274,7 +304,13 @@ export function DocumentUploader({
         variant="primary"
         size="md"
         className="w-full"
-        disabled={!selectedFile || !documentType || uploading || uploadDone}
+        disabled={
+          !selectedFile ||
+          !documentType ||
+          (isOther && !trimmedCustomLabel) ||
+          uploading ||
+          uploadDone
+        }
         loading={uploading}
         onClick={handleUpload}
       >

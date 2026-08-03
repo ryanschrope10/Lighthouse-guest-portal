@@ -44,6 +44,7 @@ const PROPERTY_PROFILES: Record<string, Property> = {
     id: 'holiday',
     name: 'Holiday Motel and RV Park',
     slug: 'holiday-motel',
+    owner_legal_name: 'Holiday Holdings LLC',
     newbook_instance_url: null,
     newbook_api_key: null, // never expose the key client-side
     timezone: 'America/Boise',

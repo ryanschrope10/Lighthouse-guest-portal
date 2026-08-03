@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDemoGuest, getBookings, getProperty } from "@/lib/newbook/data";
-import { getRulesDoc } from "@/lib/legal-docs";
+import { getRulesDoc, type RulesDoc } from "@/lib/legal-docs";
+import { getContactTemplateContent } from "@/lib/newbook/templates";
+import { getRulesTemplateId } from "@/lib/newbook/config";
 import { listSignatures } from "@/lib/portal-store";
 import { guestFacingError } from "@/lib/api-error";
 import type { ApiResponse } from "@/types";
@@ -9,10 +11,26 @@ import type {
   BookingSigningStatus,
 } from "@/lib/documents-types";
 
+// Prefer the park's live Rules & Regs from Newbook (contact template #94),
+// falling back to the built-in copy if Newbook is unreachable or the template
+// is empty. Never let a Newbook hiccup break the rules/signing page.
+async function resolveRulesDoc(base: RulesDoc): Promise<RulesDoc> {
+  try {
+    const { name, body } = await getContactTemplateContent(getRulesTemplateId());
+    if (body) {
+      return { ...base, html: body, title: name?.trim() || base.title };
+    }
+  } catch (err) {
+    console.warn("Rules template fetch failed; using built-in copy:", err);
+  }
+  return base;
+}
+
 export async function GET() {
   try {
     const property = getProperty();
-    const doc = getRulesDoc(property.slug);
+    const baseDoc = getRulesDoc(property.slug);
+    const doc = baseDoc ? await resolveRulesDoc(baseDoc) : null;
     const guest = await getDemoGuest();
 
     if (!doc) {

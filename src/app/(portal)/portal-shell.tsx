@@ -189,7 +189,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
             Owned &amp; operated by
             <br />
             <strong className="font-semibold text-sand-900">
-              Lighthouse Communities
+              {property?.owner_legal_name ?? "Lighthouse Communities"}
             </strong>
           </p>
         </div>

@@ -121,7 +121,7 @@ export function InvoiceTable({
                     </p>
                   )}
                 </div>
-                {!readonly && onPay && (
+                {!readonly && onPay && invoice.status !== "paid" && (
                   <Button
                     size="sm"
                     onClick={(e) => {
@@ -208,7 +208,7 @@ export function InvoiceTable({
                   </td>
                   {!readonly && (
                     <td className="px-6 py-4 text-right">
-                      {onPay && (
+                      {onPay && invoice.status !== "paid" && (
                         <Button
                           size="sm"
                           onClick={(e) => {

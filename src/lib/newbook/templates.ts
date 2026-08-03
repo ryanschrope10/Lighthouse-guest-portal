@@ -57,6 +57,48 @@ export async function getContactTemplate(
   return client.request<unknown>('contact_templates_get', { id: templateId });
 }
 
+export interface ContactTemplateContent {
+  name: string | null;
+  /** The template's body (HTML or text), merge tags unresolved. */
+  body: string | null;
+}
+
+/**
+ * Fetch a template and pull out its display name + body. Newbook's response
+ * shape varies by account/version, so we probe the common field names rather
+ * than assume one. Returns nulls if nothing usable is found.
+ */
+export async function getContactTemplateContent(
+  templateId: string,
+  property?: PropertyKey
+): Promise<ContactTemplateContent> {
+  const raw = await getContactTemplate(templateId, property);
+  const obj = (Array.isArray(raw) ? raw[0] : raw) as
+    | Record<string, unknown>
+    | undefined;
+  if (!obj || typeof obj !== 'object') return { name: null, body: null };
+
+  const pick = (keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === 'string' && v.trim().length) return v;
+    }
+    return null;
+  };
+
+  const body = pick([
+    'contents',
+    'content',
+    'template_contents',
+    'body',
+    'html',
+    'message',
+    'template_content',
+  ]);
+  const name = pick(['name', 'template_name', 'subject', 'title']);
+  return { name, body };
+}
+
 /** Newbook delivery channels for contact_templates_send. */
 export type SendVia = 'html_email' | 'pdf_email' | 'sms';
 

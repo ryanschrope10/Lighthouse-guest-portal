@@ -50,6 +50,19 @@ function formatCents(c: number): string {
   return `$${(c / 100).toFixed(2)}`;
 }
 
+// Friendly labels for non-catalog request types (cancellation, autopay, etc.)
+const ADDON_TYPE_LABELS: Record<string, string> = {
+  cancellation: "Cancellation request",
+  autopay_enrollment: "AutoPay enrollment",
+};
+
+function requestLabel(r: AddonRequestWithCatalog): string {
+  if (r.addon_catalog?.name) return r.addon_catalog.name;
+  if (r.addon_type && ADDON_TYPE_LABELS[r.addon_type])
+    return ADDON_TYPE_LABELS[r.addon_type];
+  return r.addon_type ?? "Add-on";
+}
+
 export default function AdminRequestsPage() {
   const [requests, setRequests] = useState<AddonRequestWithCatalog[] | null>(null);
   const [propertyId, setPropertyId] = useState("");
@@ -176,7 +189,7 @@ export default function AdminRequestsPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-base font-semibold text-gray-900">
-                            {r.addon_catalog?.name ?? r.addon_type ?? "Add-on"}
+                            {requestLabel(r)}
                           </p>
                           <Badge status={badge.status}>{badge.label}</Badge>
                           {r.addon_catalog?.category && (

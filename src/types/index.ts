@@ -8,6 +8,8 @@ export interface Property {
   id: string;
   name: string;
   slug: string;
+  /** Legal entity that owns/operates the park, shown in ownership footers. */
+  owner_legal_name?: string | null;
   newbook_instance_url: string | null;
   newbook_api_key: string | null;
   timezone: string;
@@ -114,7 +116,7 @@ export interface GuestDocument {
   id: string;
   guest_id: string;
   property_id: string;
-  type: 'insurance' | 'registration' | 'license' | 'signed_agreement';
+  type: 'insurance' | 'registration' | 'license' | 'signed_agreement' | 'other';
   label: string | null;
   file_path: string;
   file_url?: string;

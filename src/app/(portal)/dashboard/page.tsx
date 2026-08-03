@@ -14,6 +14,7 @@ import {
 
 import { Card, CardBody } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { WifiCard } from "@/components/wifi-card";
 import { useGuest } from "@/lib/context/guest-context";
 import type { Booking, Guest, ApiResponse } from "@/types/index";
 
@@ -334,6 +335,9 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      {/* Park Wi-Fi — front-desk controlled; hidden until set. */}
+      <WifiCard />
+
       {/* Quick actions — full-width rows, 64px tall. */}
       <Card className="overflow-hidden rounded-[14px]">
         <nav className="divide-y divide-sand-100">
@@ -421,7 +425,7 @@ export default function DashboardPage() {
         <p className="text-sm leading-relaxed text-sand-700">
           {property?.name ?? "This park"} is proudly owned and operated by{" "}
           <strong className="font-semibold text-sand-900">
-            Lighthouse Communities
+            {property?.owner_legal_name ?? "Lighthouse Communities"}
           </strong>
           .
         </p>
