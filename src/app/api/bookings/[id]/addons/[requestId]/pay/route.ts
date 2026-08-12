@@ -49,9 +49,10 @@ export async function POST(
       description: `Add-on request ${req.id}`,
     });
     if (!intent.ok) {
+      // No charge was taken, so the request must NOT be marked paid.
       return NextResponse.json<ApiResponse<null>>(
-        { data: null, error: 'Payment failed' },
-        { status: 502 }
+        { data: null, error: intent.reason },
+        { status: 503 }
       );
     }
 

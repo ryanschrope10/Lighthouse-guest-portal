@@ -1,23 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import {
   User,
   Mail,
   Phone,
   MapPin,
-  Pencil,
-  Save,
-  X,
   BellRing,
   Check,
   Minus,
 } from "lucide-react";
 import { useGuest } from "@/lib/context/guest-context";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { Guest, GuestAddress } from "@/types/index";
+import type { GuestAddress } from "@/types/index";
 
 interface ContactForm {
   first_name: string;
@@ -44,34 +39,12 @@ export function ContactDetails() {
     },
   };
 
-  const [form, setForm] = useState<ContactForm>(initialForm);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  function updateField<K extends keyof ContactForm>(key: K, value: ContactForm[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function updateAddress<K extends keyof GuestAddress>(key: K, value: string) {
-    setForm((prev) => ({
-      ...prev,
-      address: { ...prev.address, [key]: value },
-    }));
-  }
-
-  function handleCancel() {
-    setForm(initialForm);
-    setEditing(false);
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    // Placeholder API call
-    console.log("Saving contact details:", form);
-    await new Promise((r) => setTimeout(r, 600));
-    setSaving(false);
-    setEditing(false);
-  }
+  // Read-only view of the Newbook record. The portal reads this profile
+  // straight from Newbook on every load, and there is no write-back path
+  // yet, so an in-portal edit could not reach the PMS or survive a refresh.
+  // Guests are pointed at the front desk instead of being shown a Save
+  // button that does nothing.
+  const form = initialForm;
 
   return (
     <div className="space-y-5">
@@ -81,23 +54,6 @@ export function ContactDetails() {
           <User className="h-5 w-5" />
           <span className="text-sm font-medium">Personal Information</span>
         </div>
-        {!editing ? (
-          <button
-            onClick={() => setEditing(true)}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-gold-600 hover:text-gold-700 transition-colors"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Edit
-          </button>
-        ) : (
-          <button
-            onClick={handleCancel}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-sand-500 hover:text-sand-700 transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-            Cancel
-          </button>
-        )}
       </div>
 
       {/* Name fields */}
@@ -106,16 +62,14 @@ export function ContactDetails() {
           label="First Name"
           name="first_name"
           value={form.first_name}
-          onChange={(e) => updateField("first_name", e.target.value)}
-          disabled={!editing}
+          disabled
           placeholder="First name"
         />
         <Input
           label="Last Name"
           name="last_name"
           value={form.last_name}
-          onChange={(e) => updateField("last_name", e.target.value)}
-          disabled={!editing}
+          disabled
           placeholder="Last name"
         />
       </div>
@@ -139,8 +93,7 @@ export function ContactDetails() {
             name="phone"
             type="tel"
             value={form.phone}
-            onChange={(e) => updateField("phone", e.target.value)}
-            disabled={!editing}
+            disabled
             placeholder="(555) 123-4567"
           />
           <Phone className="pointer-events-none absolute right-3 top-[38px] h-4 w-4 text-sand-400" />
@@ -157,8 +110,7 @@ export function ContactDetails() {
           label="Street Address"
           name="street"
           value={form.address.street ?? ""}
-          onChange={(e) => updateAddress("street", e.target.value)}
-          disabled={!editing}
+          disabled
           placeholder="123 Main St"
         />
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -167,8 +119,7 @@ export function ContactDetails() {
               label="City"
               name="city"
               value={form.address.city ?? ""}
-              onChange={(e) => updateAddress("city", e.target.value)}
-              disabled={!editing}
+              disabled
               placeholder="City"
             />
           </div>
@@ -176,24 +127,21 @@ export function ContactDetails() {
             label="State"
             name="state"
             value={form.address.state ?? ""}
-            onChange={(e) => updateAddress("state", e.target.value)}
-            disabled={!editing}
+            disabled
             placeholder="TX"
           />
           <Input
             label="ZIP"
             name="zip"
             value={form.address.zip ?? ""}
-            onChange={(e) => updateAddress("zip", e.target.value)}
-            disabled={!editing}
+            disabled
             placeholder="78701"
           />
           <Input
             label="Country"
             name="country"
             value={form.address.country ?? ""}
-            onChange={(e) => updateAddress("country", e.target.value)}
-            disabled={!editing}
+            disabled
             placeholder="US"
           />
         </div>
@@ -224,15 +172,10 @@ export function ContactDetails() {
         </div>
       )}
 
-      {/* Save button */}
-      {editing && (
-        <div className="flex justify-end pt-2">
-          <Button onClick={handleSave} loading={saving}>
-            <Save className="h-4 w-4" />
-            Save Changes
-          </Button>
-        </div>
-      )}
+      <p className="border-t border-sand-200 pt-4 text-xs text-sand-500">
+        These details come from your reservation record. Contact the front desk
+        to update your name, phone, or mailing address.
+      </p>
     </div>
   );
 }

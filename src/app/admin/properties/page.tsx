@@ -1,6 +1,5 @@
 "use client";
 
-// TODO: Check for admin role — redirect non-admins away from /admin routes
 
 import { useState } from "react";
 import { Pencil, X, Eye, EyeOff, Building2 } from "lucide-react";

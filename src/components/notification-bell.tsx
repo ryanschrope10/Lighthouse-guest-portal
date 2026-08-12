@@ -1,18 +1,38 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import clsx from "clsx";
+import type { Notification, ApiResponse } from "@/types/index";
 
 interface NotificationBellProps {
-  unreadCount?: number;
   className?: string;
 }
 
-export function NotificationBell({
-  unreadCount = 0,
-  className,
-}: NotificationBellProps) {
+export function NotificationBell({ className }: NotificationBellProps) {
+  const [unreadCount, setUnreadCount] = useState(0);
+  const pathname = usePathname();
+
+  // Re-count on navigation so the badge clears after the guest reads them.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/notifications", { cache: "no-store" });
+        const json: ApiResponse<Notification[]> = await res.json();
+        if (cancelled || !json.data) return;
+        setUnreadCount(json.data.filter((n) => !n.read).length);
+      } catch {
+        // Leave the badge hidden rather than showing a made-up count.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
   const hasUnread = unreadCount > 0;
   const displayCount = unreadCount > 99 ? "99+" : String(unreadCount);
 

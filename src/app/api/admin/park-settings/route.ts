@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { requireSession, getCurrentProperty } from "@/lib/session";
+import { requireAdmin, getCurrentProperty } from "@/lib/session";
 import type { ApiResponse } from "@/types/index";
 
 export interface ParkSettings {
@@ -17,8 +17,7 @@ const EMPTY: ParkSettings = {
 
 export async function GET() {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
     const property = await getCurrentProperty();
 
     const rows = (await sql`
@@ -42,8 +41,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
     const property = await getCurrentProperty();
 
     const body = (await request.json().catch(() => ({}))) as Partial<ParkSettings>;

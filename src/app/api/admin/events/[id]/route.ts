@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { requireSession } from "@/lib/session";
+import { requireAdmin } from "@/lib/session";
 import type { EventContent, EventInput } from "@/types/events";
 import type { ApiResponse } from "@/types/index";
 
@@ -48,8 +48,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const { id } = await params;
     const body = (await request.json()) as Partial<EventInput>;
@@ -138,8 +137,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const { id } = await params;
     await sql`delete from property_content where id = ${id}`;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import {
   AlertTriangle,
@@ -15,7 +15,8 @@ import {
 import clsx from "clsx";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { Notification } from "@/types/index";
+import { Spinner } from "@/components/ui/spinner";
+import type { Notification, ApiResponse } from "@/types/index";
 
 // ---------------------------------------------------------------------------
 // Extended notification type with a "category" field for icon mapping
@@ -33,115 +34,23 @@ interface ExtendedNotification extends Notification {
 }
 
 // ---------------------------------------------------------------------------
-// Mock data — realistic RV park guest notifications
+// Category is not a column on `notifications` — staff write a title and body.
+// Derive it from the text so the icon matches the message; anything we can't
+// classify falls back to a neutral bell.
 // ---------------------------------------------------------------------------
 
-const mockNotifications: ExtendedNotification[] = [
-  {
-    id: "notif_010",
-    property_id: "prop_001",
-    target_type: "all_guests",
-    target_id: null,
-    title: "Severe Weather Advisory",
-    body: "The National Weather Service has issued a severe thunderstorm warning for our area from 4 PM to 9 PM today. Please secure all outdoor furniture and awnings. The pool and playground will be closed during the advisory period. Shelter is available at the main clubhouse. Call the front desk at (512) 555-0147 if you need assistance.",
-    channel: "push",
-    sent_at: "2026-04-14T10:30:00Z",
-    created_by: "staff_001",
-    read: false,
-    category: "park_alert",
-  },
-  {
-    id: "notif_011",
-    property_id: "prop_001",
-    target_type: "specific_guest",
-    target_id: "guest_001",
-    title: "Payment Reminder — Balance Due",
-    body: "You have an outstanding balance of $245.00 for your current stay at Site B-07. Please make a payment at your earliest convenience to keep your account current. You can pay online through the Payments section of your guest portal.",
-    channel: "both",
-    sent_at: "2026-04-14T08:00:00Z",
-    created_by: null,
-    read: false,
-    category: "payment_reminder",
-  },
-  {
-    id: "notif_001",
-    property_id: "prop_001",
-    target_type: "all_guests",
-    target_id: null,
-    title: "Pool Hours Extended",
-    body: "Great news! The pool will now be open until 10 PM on Fridays and Saturdays through the end of summer. Towels are available at the pool house. Remember: no glass containers in the pool area.",
-    channel: "push",
-    sent_at: "2026-04-13T09:00:00Z",
-    created_by: "staff_001",
-    read: false,
-    category: "general",
-  },
-  {
-    id: "notif_002",
-    property_id: "prop_001",
-    target_type: "specific_guest",
-    target_id: "guest_001",
-    title: "Insurance Expiring Soon",
-    body: "Your RV insurance document expires on April 20. Please upload a current copy to avoid any issues. You can upload documents from the Documents section of your guest portal.",
-    channel: "both",
-    sent_at: "2026-04-12T08:00:00Z",
-    created_by: null,
-    read: true,
-    category: "document_expiry",
-  },
-  {
-    id: "notif_012",
-    property_id: "prop_001",
-    target_type: "specific_guest",
-    target_id: "guest_001",
-    title: "Check-Out Reminder",
-    body: "Your current booking at Site B-07 ends on April 19 at 11:00 AM. Please ensure your site is cleared by checkout time. If you would like to extend your stay, contact the front desk or visit Bookings in your guest portal.",
-    channel: "push",
-    sent_at: "2026-04-11T14:00:00Z",
-    created_by: null,
-    read: true,
-    category: "booking_reminder",
-  },
-  {
-    id: "notif_004",
-    property_id: "prop_001",
-    target_type: "all_guests",
-    target_id: null,
-    title: "Food Truck Friday",
-    body: "Smokin' Joe's BBQ will be at the pavilion this Friday from 5-8 PM. Don't miss their brisket tacos! Cash and card accepted.",
-    channel: "push",
-    sent_at: "2026-04-09T10:00:00Z",
-    created_by: "staff_001",
-    read: true,
-    category: "general",
-  },
-  {
-    id: "notif_003",
-    property_id: "prop_001",
-    target_type: "specific_guest",
-    target_id: "guest_001",
-    title: "Booking Confirmed — Jun 20-27",
-    body: "Your booking for Site A-22 (Jun 20-27) has been confirmed. We look forward to seeing you! A deposit of $665.00 is due by June 13.",
-    channel: "email",
-    sent_at: "2026-04-02T15:00:00Z",
-    created_by: null,
-    read: true,
-    category: "booking_reminder",
-  },
-  {
-    id: "notif_013",
-    property_id: "prop_001",
-    target_type: "all_guests",
-    target_id: null,
-    title: "Water System Maintenance",
-    body: "Scheduled water system maintenance will occur on March 28 from 8 AM to 12 PM. Water service may be intermittent during this period. We recommend filling portable water containers beforehand.",
-    channel: "push",
-    sent_at: "2026-03-26T09:00:00Z",
-    created_by: "staff_001",
-    read: true,
-    category: "park_alert",
-  },
-];
+function categorize(title: string, body: string): NotificationCategory {
+  const text = `${title} ${body}`.toLowerCase();
+  if (/weather|storm|emergency|alert|closure|closed|maintenance|outage|water|power/.test(text))
+    return "park_alert";
+  if (/payment|invoice|balance|due|charge|autopay/.test(text))
+    return "payment_reminder";
+  if (/document|insurance|registration|expire|expiring|expired/.test(text))
+    return "document_expiry";
+  if (/check-?in|check-?out|reservation|booking|arrival|departure|stay/.test(text))
+    return "booking_reminder";
+  return "general";
+}
 
 // ---------------------------------------------------------------------------
 // Category config — icon, color
@@ -187,25 +96,102 @@ const categoryConfig: Record<
 // ---------------------------------------------------------------------------
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] =
-    useState<ExtendedNotification[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<
+    ExtendedNotification[] | null
+  >(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/notifications");
+        const json: ApiResponse<Notification[]> = await res.json();
+        if (cancelled) return;
+        if (!res.ok || json.error || !json.data) {
+          setLoadError(json.error ?? "We couldn't load your notifications.");
+          setNotifications([]);
+          return;
+        }
+        setNotifications(
+          json.data.map((n) => ({
+            ...n,
+            category: categorize(n.title, n.body ?? ""),
+          })),
+        );
+      } catch {
+        if (!cancelled) {
+          setLoadError("Could not reach the server.");
+          setNotifications([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const unreadCount = (notifications ?? []).filter((n) => !n.read).length;
+
+  /** Persist read receipts, then reflect them locally. */
+  const markRead = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setNotifications((prev) =>
+      (prev ?? []).map((n) => (ids.includes(n.id) ? { ...n, read: true } : n)),
+    );
+    try {
+      await fetch("/api/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notification_ids: ids }),
+      });
+    } catch {
+      // Receipt failed to save; it'll show unread again on next load, which
+      // is the honest outcome — don't pretend otherwise.
+      setNotifications((prev) =>
+        (prev ?? []).map((n) =>
+          ids.includes(n.id) ? { ...n, read: false } : n,
+        ),
+      );
+    }
+  }, []);
 
   const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
+    markRead((notifications ?? []).filter((n) => !n.read).map((n) => n.id));
+  }, [notifications, markRead]);
 
   const toggleExpand = useCallback(
     (id: string) => {
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id && !n.read ? { ...n, read: true } : n)),
-      );
+      const notif = (notifications ?? []).find((n) => n.id === id);
+      if (notif && !notif.read) markRead([id]);
       setExpandedId((prev) => (prev === id ? null : id));
     },
-    [],
+    [notifications, markRead],
   );
+
+  if (notifications === null) {
+    return (
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Notifications</h1>
+        <div className="mt-12 flex justify-center">
+          <Spinner />
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Notifications</h1>
+        <div className="mt-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+          <p className="text-sm text-red-700">{loadError}</p>
+        </div>
+      </div>
+    );
+  }
 
   // Empty state
   if (notifications.length === 0) {

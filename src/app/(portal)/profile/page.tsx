@@ -4,25 +4,17 @@ import { useState } from "react";
 import {
   User,
   Truck,
-  Heart,
   FileText,
   Settings,
   ChevronDown,
 } from "lucide-react";
 import clsx from "clsx";
-import { useGuest } from "@/lib/context/guest-context";
 import { ContactDetails } from "@/components/profile/contact-details";
 import { VehiclesSection } from "@/components/profile/vehicles-section";
-import { PreferencesSection } from "@/components/profile/preferences-section";
 import { DocumentsSummary } from "@/components/profile/documents-summary";
 import { AccountSettings } from "@/components/profile/account-settings";
 
-type SectionId =
-  | "contact"
-  | "vehicles"
-  | "preferences"
-  | "documents"
-  | "account";
+type SectionId = "contact" | "vehicles" | "documents" | "account";
 
 interface Section {
   id: SectionId;
@@ -45,12 +37,6 @@ const SECTIONS: Section[] = [
     component: VehiclesSection,
   },
   {
-    id: "preferences",
-    label: "Preferences",
-    icon: Heart,
-    component: PreferencesSection,
-  },
-  {
     id: "documents",
     label: "Documents",
     icon: FileText,
@@ -65,7 +51,6 @@ const SECTIONS: Section[] = [
 ];
 
 export default function ProfilePage() {
-  const { guest, session } = useGuest();
   const [activeSection, setActiveSection] = useState<SectionId>("contact");
   const [expandedSections, setExpandedSections] = useState<Set<SectionId>>(
     new Set(["contact"]),
@@ -92,7 +77,7 @@ export default function ProfilePage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-sand-900">My Profile</h1>
         <p className="mt-1 text-sm text-sand-500">
-          Manage your personal information, vehicles, and preferences.
+          Manage your contact details, vehicles, and documents.
         </p>
       </div>
 

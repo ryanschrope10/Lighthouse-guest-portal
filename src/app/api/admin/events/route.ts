@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { requireSession } from "@/lib/session";
+import { requireAdmin } from "@/lib/session";
 import type { EventContent, EventInput } from "@/types/events";
 import type { ApiResponse } from "@/types/index";
 
@@ -40,8 +40,7 @@ function sanitize(input: Partial<EventInput>): SanitizedInsert {
 
 export async function GET(request: NextRequest) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const propertyId = request.nextUrl.searchParams.get("property_id");
 
@@ -78,8 +77,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const body = (await request.json()) as Partial<EventInput>;
 

@@ -1,6 +1,5 @@
 "use client";
 
-// TODO: Check for admin role — redirect non-admins away from /admin routes
 
 import { TrendingUp, TrendingDown, Users, UserCheck, DollarSign, ShieldCheck } from "lucide-react";
 import clsx from "clsx";

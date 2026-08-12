@@ -207,7 +207,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
               variant="header"
             />
           </div>
-          <NotificationBell unreadCount={3} />
+          <NotificationBell />
         </header>
 
         {/* Desktop top header */}
@@ -225,7 +225,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
                 {phone}
               </a>
             )}
-            <NotificationBell unreadCount={3} />
+            <NotificationBell />
           </div>
         </header>
 

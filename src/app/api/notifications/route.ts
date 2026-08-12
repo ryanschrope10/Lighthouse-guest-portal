@@ -13,6 +13,7 @@ interface NotificationRow {
   channel: string;
   sent_at: string;
   created_by: string | null;
+  read: boolean;
 }
 
 export async function GET() {
@@ -30,15 +31,18 @@ export async function GET() {
     // property-wide broadcasts for the property they're linked to. Admin
     // notifications are excluded.
     const rows = (await sql`
-      select id, property_id, target_type, target_id, title, body,
-             channel, sent_at, created_by
-      from notifications
-      where property_id = ${guest.property_id}
+      select n.id, n.property_id, n.target_type, n.target_id, n.title, n.body,
+             n.channel, n.sent_at, n.created_by,
+             (r.guest_id is not null) as read
+      from notifications n
+      left join notification_reads r
+        on r.notification_id = n.id and r.guest_id = ${guest.id}
+      where n.property_id = ${guest.property_id}
         and (
-          (target_type = 'guest' and target_id = ${guest.id})
-          or target_type in ('all_guests', 'property', 'booking_group')
+          (n.target_type = 'guest' and n.target_id = ${guest.id})
+          or n.target_type in ('all_guests', 'property', 'booking_group')
         )
-      order by sent_at desc
+      order by n.sent_at desc
       limit 50
     `) as NotificationRow[];
 
@@ -58,8 +62,7 @@ export async function GET() {
         r.channel === 'email' || r.channel === 'both' ? r.channel : 'push',
       sent_at: r.sent_at,
       created_by: r.created_by,
-      // No read-tracking table exists on this track yet; surface as unread.
-      read: false,
+      read: r.read,
     }));
 
     return NextResponse.json<ApiResponse<Notification[]>>(
@@ -103,17 +106,20 @@ export async function PUT(request: Request) {
       (v: unknown): v is string => typeof v === 'string'
     );
 
-    // Scope to notifications this guest is actually allowed to see; return the
-    // subset that resolves to real rows. There is no read-tracking column on
-    // this track yet, so marking read is not persisted server-side.
+    // Scope to notifications this guest is actually allowed to see, then
+    // record a read receipt for each. Re-reading is idempotent.
     const rows = (await sql`
-      select id from notifications
-      where property_id = ${guest.property_id}
-        and id = any(${ids}::uuid[])
+      insert into notification_reads (notification_id, guest_id)
+      select n.id, ${guest.id}
+      from notifications n
+      where n.property_id = ${guest.property_id}
+        and n.id = any(${ids}::uuid[])
         and (
-          (target_type = 'guest' and target_id = ${guest.id})
-          or target_type in ('all_guests', 'property', 'booking_group')
+          (n.target_type = 'guest' and n.target_id = ${guest.id})
+          or n.target_type in ('all_guests', 'property', 'booking_group')
         )
+      on conflict (notification_id, guest_id) do nothing
+      returning notification_id as id
     `) as Array<{ id: string }>;
 
     return NextResponse.json<ApiResponse<{ marked_read: string[] }>>(

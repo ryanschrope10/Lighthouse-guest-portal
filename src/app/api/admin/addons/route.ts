@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { requireSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/session';
 import type { ApiResponse } from '@/types';
 import type { AddonCatalogItem } from '@/types/addons';
 
@@ -19,8 +19,7 @@ interface CreateCatalogBody {
 
 export async function GET(request: Request) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const url = new URL(request.url);
     const propertyId = url.searchParams.get('property_id');
@@ -53,8 +52,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const body: CreateCatalogBody = await request.json();
     if (!body.property_id || !body.slug || !body.name) {

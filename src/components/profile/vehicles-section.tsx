@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Truck,
   Plus,
@@ -20,7 +20,13 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { Vehicle, BookingEquipment, InsurancePolicy } from "@/types/index";
+import { Spinner } from "@/components/ui/spinner";
+import type {
+  Vehicle,
+  BookingEquipment,
+  InsurancePolicy,
+  ApiResponse,
+} from "@/types/index";
 
 // Safely format an ISO date string; returns null for empty/invalid input.
 function formatDate(value: string | null | undefined): string | null {
@@ -57,36 +63,6 @@ const VEHICLE_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-// Mock data
-const MOCK_VEHICLES: Vehicle[] = [
-  {
-    id: "v1",
-    guest_id: "g1",
-    property_id: "p1",
-    type: "rv",
-    make: "Winnebago",
-    model: "View 24D",
-    year: 2022,
-    license_plate: "TX-RV-4521",
-    length_ft: 25,
-    details: {},
-    created_at: "2025-01-15T00:00:00Z",
-  },
-  {
-    id: "v2",
-    guest_id: "g1",
-    property_id: "p1",
-    type: "vehicle",
-    make: "Ford",
-    model: "F-150",
-    year: 2023,
-    license_plate: "TX-123-ABC",
-    length_ft: null,
-    details: {},
-    created_at: "2025-02-10T00:00:00Z",
-  },
-];
-
 interface VehicleForm {
   type: Vehicle["type"];
   make: string;
@@ -110,12 +86,42 @@ export function VehiclesSection() {
   const equipment = guest?.equipment ?? [];
   const insurancePolicies = guest?.insurance_policies ?? [];
 
-  const [vehicles, setVehicles] = useState<Vehicle[]>(MOCK_VEHICLES);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<VehicleForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Inline confirmation instead of window.confirm — a native dialog is a poor
+  // fit on phones, which is how most guests use the portal.
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/guest/vehicles");
+        const json: ApiResponse<Vehicle[]> = await res.json();
+        if (cancelled) return;
+        if (!res.ok || json.error || !json.data) {
+          setError(json.error ?? "We couldn't load your vehicles.");
+          return;
+        }
+        setVehicles(json.data);
+      } catch {
+        if (!cancelled) setError("Could not reach the server.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function updateForm<K extends keyof VehicleForm>(key: K, value: VehicleForm[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -134,10 +140,18 @@ export function VehiclesSection() {
     setShowForm(true);
   }
 
-  function handleDelete(id: string) {
-    if (window.confirm("Remove this vehicle?")) {
-      setVehicles((prev) => prev.filter((v) => v.id !== id));
-      console.log("Deleting vehicle:", id);
+  async function handleDelete(id: string) {
+    setConfirmingDeleteId(null);
+    const previous = vehicles;
+    setVehicles((prev) => prev.filter((v) => v.id !== id));
+    try {
+      const res = await fetch(`/api/guest/vehicles/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("delete failed");
+    } catch {
+      setVehicles(previous);
+      setError("We couldn't remove that vehicle. Please try again.");
     }
   }
 
@@ -149,52 +163,66 @@ export function VehiclesSection() {
 
   async function handleSave() {
     setSaving(true);
-    console.log("Saving vehicle:", form);
-    await new Promise((r) => setTimeout(r, 600));
+    setError(null);
 
-    if (editingId) {
-      setVehicles((prev) =>
-        prev.map((v) =>
-          v.id === editingId
-            ? {
-                ...v,
-                type: form.type,
-                make: form.make || null,
-                model: form.model || null,
-                year: form.year ? parseInt(form.year) : null,
-                license_plate: form.license_plate || null,
-                length_ft: form.length_ft ? parseInt(form.length_ft) : null,
-              }
-            : v,
-        ),
+    const payload = {
+      type: form.type,
+      make: form.make || null,
+      model: form.model || null,
+      year: form.year ? parseInt(form.year) : null,
+      license_plate: form.license_plate || null,
+      length_ft: form.length_ft ? parseInt(form.length_ft) : null,
+    };
+
+    try {
+      const res = await fetch(
+        editingId ? `/api/guest/vehicles/${editingId}` : "/api/guest/vehicles",
+        {
+          method: editingId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
       );
-    } else {
-      const newVehicle: Vehicle = {
-        id: `v-${Date.now()}`,
-        guest_id: "g1",
-        property_id: "p1",
-        type: form.type,
-        make: form.make || null,
-        model: form.model || null,
-        year: form.year ? parseInt(form.year) : null,
-        license_plate: form.license_plate || null,
-        length_ft: form.length_ft ? parseInt(form.length_ft) : null,
-        details: {},
-        created_at: new Date().toISOString(),
-      };
-      setVehicles((prev) => [...prev, newVehicle]);
+      const json: ApiResponse<Vehicle> = await res.json();
+      if (!res.ok || json.error || !json.data) {
+        setError(json.error ?? "We couldn't save that vehicle.");
+        return;
+      }
+      const saved = json.data;
+      setVehicles((prev) =>
+        editingId
+          ? prev.map((v) => (v.id === editingId ? saved : v))
+          : [...prev, saved],
+      );
+      handleCancel();
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-    handleCancel();
   }
 
   function toggleExpand(id: string) {
     setExpandedId((prev) => (prev === id ? null : id));
   }
 
+  if (loading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Spinner />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
       {/* Vehicle list */}
       {vehicles.length === 0 && !showForm && (
         <div className="py-8 text-center text-sm text-sand-500">
@@ -278,13 +306,31 @@ export function VehiclesSection() {
                   <Pencil className="h-3.5 w-3.5" />
                   Edit
                 </button>
-                <button
-                  onClick={() => handleDelete(vehicle.id)}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
-                </button>
+                {confirmingDeleteId === vehicle.id ? (
+                  <>
+                    <button
+                      onClick={() => handleDelete(vehicle.id)}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Remove
+                    </button>
+                    <button
+                      onClick={() => setConfirmingDeleteId(null)}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-sand-600 hover:bg-sand-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingDeleteId(vehicle.id)}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           )}

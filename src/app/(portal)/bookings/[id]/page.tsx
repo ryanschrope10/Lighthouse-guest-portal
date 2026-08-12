@@ -29,8 +29,6 @@ import clsx from "clsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { Spinner } from "@/components/ui/spinner";
 import { ReviewFlow } from "@/components/reviews/review-flow";
@@ -40,6 +38,7 @@ import { AddonMarketplace } from "@/components/addons/addon-marketplace";
 import { LockCodeCard } from "@/components/lock-codes/lock-code-card";
 import { CheckinReminder } from "@/components/lock-codes/checkin-reminder";
 import { SignatureStatusCard } from "@/components/signature-status/signature-status-card";
+import { useBookingAddons } from "@/components/addons/use-booking-addons";
 import { InvoiceDetailModal } from "@/components/invoice-detail-modal";
 import { useGuest } from "@/lib/context/guest-context";
 import type {
@@ -92,13 +91,6 @@ const LODGING_BOOKING_TYPES: Booking["booking_type"][] = [
   "mobile_home",
 ];
 
-const ADDON_OPTIONS = [
-  { label: "Propane Delivery", value: "propane_delivery" },
-  { label: "Early Check-in", value: "early_checkin" },
-  { label: "Late Checkout", value: "late_checkout" },
-  { label: "Extra Cleaning", value: "extra_cleaning" },
-];
-
 // ─── Page ────────────────────────────────────────────────────
 export default function BookingDetailPage() {
   const params = useParams<{ id: string }>();
@@ -135,11 +127,6 @@ export default function BookingDetailPage() {
     };
   }, [params.id]);
 
-  // Extend stay
-  const [showExtend, setShowExtend] = useState(false);
-  const [newCheckout, setNewCheckout] = useState("");
-  const [extendSubmitted, setExtendSubmitted] = useState(false);
-
   // Cancel booking (staff-approval request — not an immediate cancel)
   const [showCancel, setShowCancel] = useState(false);
   const [cancelState, setCancelState] = useState<
@@ -168,11 +155,6 @@ export default function BookingDetailPage() {
       setCancelState("error");
     }
   }
-
-  // Add-on request
-  const [showAddon, setShowAddon] = useState(false);
-  const [selectedAddon, setSelectedAddon] = useState("");
-  const [addonSubmitted, setAddonSubmitted] = useState(false);
 
   // Invoice detail (itemized + print) — same modal the Payments tab uses.
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -217,6 +199,25 @@ export default function BookingDetailPage() {
       setPaying(false);
     }
   }
+
+  // The Actions buttons are shortcuts to the real request cards further down
+  // the page (RequestExtension / AddonMarketplace), which post to the API.
+  function scrollTo(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  }
+
+  // Every request card renders only when the park has published a matching
+  // add-on in the catalog, so read the catalog here too: with none published
+  // there is nothing to request, and an "Extend Stay" button that scrolls to
+  // an empty section is exactly the dead control we're removing.
+  const { data: addonData } = useBookingAddons(params.id);
+  const catalog = addonData?.catalog ?? [];
+  const canExtend = catalog.some((c) => c.slug === "stay_extension");
+  const canLateCheckout = catalog.some((c) => c.slug === "late_checkout");
+  const canBuyAddons = catalog.some(
+    (c) => c.slug !== "stay_extension" && c.slug !== "late_checkout",
+  );
+  const hasRequestOptions = canExtend || canLateCheckout || canBuyAddons;
 
   if (loadState === "loading") {
     return (
@@ -428,17 +429,15 @@ export default function BookingDetailPage() {
           <h2 className="text-base font-semibold text-gray-900">Actions</h2>
 
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setShowExtend(true);
-                setExtendSubmitted(false);
-                setNewCheckout("");
-              }}
-            >
-              <CalendarPlus className="h-4 w-4" />
-              Extend Stay
-            </Button>
+            {canExtend && (
+              <Button
+                variant="secondary"
+                onClick={() => scrollTo("extend-stay")}
+              >
+                <CalendarPlus className="h-4 w-4" />
+                Extend Stay
+              </Button>
+            )}
             <Button
               variant="danger"
               onClick={() => {
@@ -449,22 +448,17 @@ export default function BookingDetailPage() {
               <XCircle className="h-4 w-4" />
               Request Cancellation
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setShowAddon(true);
-                setAddonSubmitted(false);
-                setSelectedAddon("");
-              }}
-            >
-              <PackagePlus className="h-4 w-4" />
-              Request Add-on
-            </Button>
+            {canBuyAddons && (
+              <Button variant="secondary" onClick={() => scrollTo("addons")}>
+                <PackagePlus className="h-4 w-4" />
+                Request Add-on
+              </Button>
+            )}
           </div>
         </section>
       )}
 
-      {isActive && (
+      {isActive && hasRequestOptions && (
         <section className="mt-6 space-y-3">
           <h2 className="text-base font-semibold text-gray-900">
             Add-ons & Requests
@@ -473,66 +467,17 @@ export default function BookingDetailPage() {
             bookingId={booking.id}
             checkOutIso={booking.check_out}
           />
-          <RequestExtension
-            bookingId={booking.id}
-            checkOutIso={booking.check_out}
-          />
-          <AddonMarketplace bookingId={booking.id} />
-        </section>
-      )}
-
-      {/* ── Extend Stay Modal ── */}
-      <Modal
-        open={showExtend}
-        onClose={() => setShowExtend(false)}
-        title="Extend Your Stay"
-        footer={
-          !extendSubmitted ? (
-            <div className="flex gap-3 justify-end">
-              <Button variant="ghost" onClick={() => setShowExtend(false)}>
-                Cancel
-              </Button>
-              <Button
-                disabled={!newCheckout}
-                onClick={() => setExtendSubmitted(true)}
-              >
-                Confirm Extension
-              </Button>
-            </div>
-          ) : undefined
-        }
-      >
-        {extendSubmitted ? (
-          <div className="flex flex-col items-center py-4 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-50">
-              <Check className="h-6 w-6 text-green-600" />
-            </div>
-            <p className="mt-3 text-base font-semibold text-gray-900">
-              Extension Requested
-            </p>
-            <p className="mt-1 text-sm text-sand-500">
-              Your request to extend your stay has been submitted. You will
-              receive a confirmation shortly.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-sand-600">
-              Current check-out:{" "}
-              <span className="font-medium text-gray-900">
-                {format(parseISO(booking.check_out), "EEE, MMM d, yyyy")}
-              </span>
-            </p>
-            <Input
-              type="date"
-              label="New Check-out Date"
-              value={newCheckout}
-              onChange={(e) => setNewCheckout(e.target.value)}
-              min={format(parseISO(booking.check_out), "yyyy-MM-dd")}
+          <div id="extend-stay" className="scroll-mt-24">
+            <RequestExtension
+              bookingId={booking.id}
+              checkOutIso={booking.check_out}
             />
           </div>
-        )}
-      </Modal>
+          <div id="addons" className="scroll-mt-24">
+            <AddonMarketplace bookingId={booking.id} />
+          </div>
+        </section>
+      )}
 
       {/* ── Request Cancellation Modal ── */}
       <Modal
@@ -624,57 +569,6 @@ export default function BookingDetailPage() {
               ? The front desk will review and confirm — your booking stays
               active until then.
             </p>
-          </div>
-        )}
-      </Modal>
-
-      {/* ── Request Add-on Modal ── */}
-      <Modal
-        open={showAddon}
-        onClose={() => setShowAddon(false)}
-        title="Request an Add-on"
-        footer={
-          !addonSubmitted ? (
-            <div className="flex gap-3 justify-end">
-              <Button variant="ghost" onClick={() => setShowAddon(false)}>
-                Cancel
-              </Button>
-              <Button
-                disabled={!selectedAddon}
-                onClick={() => setAddonSubmitted(true)}
-              >
-                Submit Request
-              </Button>
-            </div>
-          ) : undefined
-        }
-      >
-        {addonSubmitted ? (
-          <div className="flex flex-col items-center py-4 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-50">
-              <Check className="h-6 w-6 text-green-600" />
-            </div>
-            <p className="mt-3 text-base font-semibold text-gray-900">
-              Add-on Requested
-            </p>
-            <p className="mt-1 text-sm text-sand-500">
-              Your add-on request has been submitted. The property team will
-              follow up with you shortly.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-sand-600">
-              Select the type of add-on you would like to request for your
-              stay.
-            </p>
-            <Select
-              label="Add-on Type"
-              value={selectedAddon}
-              onChange={(e) => setSelectedAddon(e.target.value)}
-              options={ADDON_OPTIONS}
-              placeholder="Select an add-on..."
-            />
           </div>
         )}
       </Modal>

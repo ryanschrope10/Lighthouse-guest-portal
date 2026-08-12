@@ -68,7 +68,6 @@ export interface CreatePaymentIntentInput {
   description: string;
 }
 
-export interface CreatePaymentIntentResult {
-  ok: true;
-  newbook_payment_token: string;
-}
+export type CreatePaymentIntentResult =
+  | { ok: true; newbook_payment_token: string }
+  | { ok: false; reason: string };

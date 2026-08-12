@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { requireSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/session';
 import type { ApiResponse } from '@/types';
 import type { AddonCatalogItem } from '@/types/addons';
 
@@ -48,8 +48,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const { id } = await params;
     const body: UpdateCatalogBody = await request.json();
@@ -99,8 +98,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const { id } = await params;
     await sql`delete from addon_catalog where id = ${id}`;

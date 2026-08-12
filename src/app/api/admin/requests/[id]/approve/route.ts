@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { requireSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/session';
 import type { ApiResponse } from '@/types';
 import type { AddonRequestRow } from '@/types/addons';
 
@@ -9,8 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const { id } = await params;
     const body = (await request.json().catch(() => ({}))) as {

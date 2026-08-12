@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { requireSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/session';
 import type { ApiResponse } from '@/types';
 import type {
   CreateLockCodeInput,
@@ -16,10 +16,9 @@ const REVEAL_OPTIONS: LockCodeRevealAfter[] = [
 
 export async function GET(request: Request) {
   try {
-    // TODO: enforce admin role once admin login exists. Currently the booking
-    // detail page hits this with booking_id to show the guest's own code, so
-    // any logged-in session is allowed.
-    await requireSession();
+    // Admin-only. Guests read their own booking's code through
+    // GET /api/bookings/[id]/lock-code, which enforces the reveal gate.
+    await requireAdmin();
 
     const url = new URL(request.url);
     const propertyId = url.searchParams.get('property_id');
@@ -86,8 +85,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const body: CreateLockCodeInput = await request.json();
     if (!body.booking_id || !body.property_id || !body.code) {

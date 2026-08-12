@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { requireSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/session';
 import type { ApiResponse } from '@/types';
 import type { AddonCategory, AddonRequestWithCatalog } from '@/types/addons';
 
@@ -8,8 +8,7 @@ const DEFAULT_STATUSES = ['pending', 'auto_approved', 'approved', 'paid'];
 
 export async function GET(request: Request) {
   try {
-    // TODO: enforce admin role once admin login exists
-    await requireSession();
+    await requireAdmin();
 
     const url = new URL(request.url);
     const propertyId = url.searchParams.get('property_id');

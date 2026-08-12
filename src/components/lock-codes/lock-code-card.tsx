@@ -6,60 +6,39 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { ApiResponse, Booking } from "@/types/index";
-import type { LockCode, LockCodeRevealState } from "@/types/lock-codes";
+import type { GuestLockCode } from "@/app/api/bookings/[id]/lock-code/route";
 
 interface LockCodeCardProps {
   booking: Booking;
 }
 
-function evaluateReveal(
-  booking: Booking,
-  code: LockCode | null
-): LockCodeRevealState {
-  const reasons: LockCodeRevealState["reasons"] = [];
-  if (!code) {
-    reasons.push("no_code");
-    return { revealed: false, reasons };
-  }
-  if (code.revoked_at) {
-    reasons.push("revoked");
-    return { revealed: false, reasons };
-  }
-  const paid = booking.balance_due <= 0;
-  const checkedIn = booking.status === "checked_in";
-
-  if (code.reveal_after === "always") {
-    return { revealed: true, reasons };
-  }
-  if (code.reveal_after === "paid") {
-    if (!paid) reasons.push("not_paid");
-    return { revealed: paid, reasons };
-  }
-  // paid_and_checkin
-  if (!paid) reasons.push("not_paid");
-  if (!checkedIn) reasons.push("not_checked_in");
-  return { revealed: paid && checkedIn, reasons };
-}
+const NO_CODE: GuestLockCode = {
+  revealed: false,
+  reasons: ["no_code"],
+  code: null,
+  notes: null,
+};
 
 export function LockCodeCard({ booking }: LockCodeCardProps) {
   const [loading, setLoading] = useState(true);
-  const [code, setCode] = useState<LockCode | null>(null);
+  const [state, setState] = useState<GuestLockCode>(NO_CODE);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        // Guest-scoped endpoint: it returns the code value only once the
+        // reveal gate passes, so the code is never in the response early.
         const res = await fetch(
-          `/api/admin/lock-codes?booking_id=${encodeURIComponent(booking.id)}`,
+          `/api/bookings/${encodeURIComponent(booking.id)}/lock-code`,
           { cache: "no-store" }
         );
-        const json: ApiResponse<LockCode[]> = await res.json();
+        const json: ApiResponse<GuestLockCode> = await res.json();
         if (cancelled) return;
-        const active = (json.data ?? []).find((c) => !c.revoked_at) ?? null;
-        setCode(active);
+        setState(json.data ?? NO_CODE);
       } catch {
-        if (!cancelled) setCode(null);
+        if (!cancelled) setState(NO_CODE);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -68,8 +47,6 @@ export function LockCodeCard({ booking }: LockCodeCardProps) {
       cancelled = true;
     };
   }, [booking.id]);
-
-  const state = evaluateReveal(booking, code);
 
   if (loading) {
     return (
@@ -88,7 +65,7 @@ export function LockCodeCard({ booking }: LockCodeCardProps) {
     );
   }
 
-  if (state.revealed && code) {
+  if (state.revealed && state.code) {
     return (
       <div id="lock-code">
       <Card className="border-gold-300">
@@ -101,14 +78,14 @@ export function LockCodeCard({ booking }: LockCodeCardProps) {
           </div>
           <div className="flex items-center justify-between gap-3 rounded-lg bg-sand-50 px-4 py-3">
             <span className="font-mono text-2xl font-bold tracking-wider text-gray-900 sm:text-3xl">
-              {code.code}
+              {state.code}
             </span>
             <Button
               variant="secondary"
               size="sm"
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(code.code);
+                  await navigator.clipboard.writeText(state.code!);
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 } catch {
@@ -132,8 +109,8 @@ export function LockCodeCard({ booking }: LockCodeCardProps) {
           <p className="text-sm text-sand-600">
             Use this code at your unit&apos;s lock to enter.
           </p>
-          {code.notes && (
-            <p className="text-xs text-sand-500">{code.notes}</p>
+          {state.notes && (
+            <p className="text-xs text-sand-500">{state.notes}</p>
           )}
         </CardBody>
       </Card>
