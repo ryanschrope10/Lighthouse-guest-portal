@@ -212,6 +212,12 @@ export interface Invoice {
   guest_id: string;
   newbook_invoice_id: string | null;
   amount: number;
+  /**
+   * Amount already applied to THIS invoice. Monthly statements and payment-plan
+   * installments each carry their own figure — the booking-level balance only
+   * describes the whole stay and must not be used for a single period.
+   */
+  amount_paid?: number;
   status: InvoiceStatus;
   due_date: string | null;
   paid_at: string | null;

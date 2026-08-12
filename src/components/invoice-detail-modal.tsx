@@ -65,9 +65,26 @@ export function InvoiceDetailModal({
 }) {
   const b = invoice.booking;
   const status = STATUS[invoice.status];
-  const total = b?.total_amount ?? invoice.amount;
-  const balance = invoice.status === "paid" ? 0 : b?.balance_due ?? invoice.amount;
-  const paid = Math.max(0, Number((total - balance).toFixed(2)));
+  // The invoice's own amount is the total — a monthly statement or payment-plan
+  // installment covers one period, not the whole stay, so the booking total
+  // would badly overstate it.
+  const total = invoice.amount;
+  const paid = Math.max(
+    0,
+    Math.min(
+      total,
+      invoice.amount_paid ??
+        // Older/whole-stay invoices without a per-invoice paid figure: the
+        // booking balance only applies when this invoice IS the whole stay.
+        (b && Math.abs(b.total_amount - total) < 0.01
+          ? total - b.balance_due
+          : invoice.status === "paid"
+            ? total
+            : 0),
+    ),
+  );
+  const balance =
+    invoice.status === "paid" ? 0 : Number((total - paid).toFixed(2));
   // Always show at least one line; if Newbook returned no breakdown, fall back
   // to a single charge line for the booking total (avoids a bogus taxes line).
   const items =

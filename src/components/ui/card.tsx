@@ -1,18 +1,21 @@
 import clsx from "clsx";
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
-interface CardProps {
+// Extra div props are forwarded so a card can be made interactive (onClick,
+// role, tabIndex) from a client component.
+interface CardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
   className?: string;
 }
 
-export function Card({ children, className }: CardProps) {
+export function Card({ children, className, ...rest }: CardProps) {
   return (
     <div
       className={clsx(
         "rounded-xl border border-sand-200 bg-white shadow-sm",
         className,
       )}
+      {...rest}
     >
       {children}
     </div>

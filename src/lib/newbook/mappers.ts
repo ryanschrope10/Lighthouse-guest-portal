@@ -234,6 +234,7 @@ function deriveInvoice(
     guest_id: portalIds.guest_id,
     newbook_invoice_id: String(b.booking_id),
     amount,
+    amount_paid: Number(Math.max(0, amount - balance).toFixed(2)),
     status,
     due_date: toIso(b.booking_arrival) || null,
     paid_at: status === 'paid' ? toIso(b.booking_modified) || null : null,
@@ -384,6 +385,7 @@ function deriveScheduledInvoices(
         id: `${base.id}-pp-${i + 1}`,
         newbook_invoice_id: `${b.booking_id}-pp-${i + 1}`,
         amount,
+        amount_paid: status === 'paid' ? amount : 0,
         status,
         due_date: due,
         paid_at: status === 'paid' ? due : null,
@@ -417,11 +419,14 @@ function deriveScheduledInvoices(
       return dates.map((d, i) => {
         const dIso = d.toISOString();
         let status: InvoiceStatus;
+        let applied = 0;
         if (paidRemaining >= amount - 0.001) {
           status = 'paid';
+          applied = amount;
           paidRemaining -= amount;
         } else if (paidRemaining > 0.001) {
           status = 'partial';
+          applied = money(paidRemaining);
           paidRemaining = 0;
         } else {
           status = d < now ? 'overdue' : 'pending';
@@ -432,6 +437,7 @@ function deriveScheduledInvoices(
           id: `${base.id}-m-${i + 1}`,
           newbook_invoice_id: `${b.booking_id}-m-${i + 1}`,
           amount,
+          amount_paid: applied,
           status,
           due_date: dIso,
           paid_at: status === 'paid' ? dIso : null,

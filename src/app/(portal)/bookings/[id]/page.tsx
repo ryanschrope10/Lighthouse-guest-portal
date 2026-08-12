@@ -21,6 +21,9 @@ import {
   Repeat,
   CalendarClock,
   FileWarning,
+  ChevronRight,
+  Mail,
+  AlertCircle,
 } from "lucide-react";
 import clsx from "clsx";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +40,8 @@ import { AddonMarketplace } from "@/components/addons/addon-marketplace";
 import { LockCodeCard } from "@/components/lock-codes/lock-code-card";
 import { CheckinReminder } from "@/components/lock-codes/checkin-reminder";
 import { SignatureStatusCard } from "@/components/signature-status/signature-status-card";
+import { InvoiceDetailModal } from "@/components/invoice-detail-modal";
+import { useGuest } from "@/lib/context/guest-context";
 import type {
   Booking,
   BookingStatus,
@@ -169,6 +174,50 @@ export default function BookingDetailPage() {
   const [selectedAddon, setSelectedAddon] = useState("");
   const [addonSubmitted, setAddonSubmitted] = useState(false);
 
+  // Invoice detail (itemized + print) — same modal the Payments tab uses.
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const { guest, property } = useGuest();
+
+  // Pay — emails a secure Newbook payment link for this booking, the same flow
+  // the Payments tab uses. The link covers the booking's balance, so every Pay
+  // button here (per-invoice or full balance) hits the same endpoint.
+  const [paying, setPaying] = useState(false);
+  const [payNotice, setPayNotice] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  async function requestPayLink() {
+    if (!booking || paying) return;
+    setPaying(true);
+    setPayNotice(null);
+    try {
+      const res = await fetch(
+        `/api/bookings/${encodeURIComponent(booking.id)}/pay-link`,
+        { method: "POST" },
+      );
+      const json: ApiResponse<unknown> = await res.json().catch(() => ({
+        data: null,
+        error: "We couldn't send your payment link.",
+      }));
+      if (!res.ok || json.error) {
+        setPayNotice({
+          type: "error",
+          text: json.error ?? "We couldn't send your payment link.",
+        });
+        return;
+      }
+      setPayNotice({
+        type: "success",
+        text: `We've emailed you a secure payment link for ${booking.site_or_room}. Check your inbox to pay online.`,
+      });
+    } catch {
+      setPayNotice({ type: "error", text: "Could not reach the server." });
+    } finally {
+      setPaying(false);
+    }
+  }
+
   if (loadState === "loading") {
     return (
       <div className="mx-auto max-w-3xl">
@@ -299,13 +348,33 @@ export default function BookingDetailPage() {
             No invoices for this booking.
           </p>
         ) : (
-          <div className="mt-3 flex flex-col gap-3">
-            {booking.invoices.map((invoice) => (
-              <InvoiceRow key={invoice.id} invoice={invoice} />
-            ))}
-          </div>
+          <>
+            <p className="mt-1 text-sm text-sand-500">
+              Tap an invoice to see the itemized detail or print it.
+            </p>
+            <div className="mt-3 flex flex-col gap-3">
+              {booking.invoices.map((invoice) => (
+                <InvoiceRow
+                  key={invoice.id}
+                  invoice={invoice}
+                  paying={paying}
+                  onPay={requestPayLink}
+                  onView={() =>
+                    setSelectedInvoice({
+                      ...invoice,
+                      // Give the modal the reservation context it prints, minus
+                      // the nested invoice list (avoids a self-referencing loop).
+                      booking: { ...booking, invoices: [] },
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </>
         )}
       </section>
+
+      {payNotice && <PayNotice notice={payNotice} />}
 
       {/* ── Balance ── */}
       <Card className="mt-6">
@@ -323,7 +392,12 @@ export default function BookingDetailPage() {
               </p>
             </div>
             {booking.balance_due > 0 && (
-              <Button size="md">
+              <Button
+                size="md"
+                disabled={paying}
+                loading={paying}
+                onClick={requestPayLink}
+              >
                 <CreditCard className="h-4 w-4" />
                 Pay Full Balance
               </Button>
@@ -604,6 +678,25 @@ export default function BookingDetailPage() {
           </div>
         )}
       </Modal>
+
+      {/* ── Invoice Detail (itemized + print) ── */}
+      {selectedInvoice && (
+        <InvoiceDetailModal
+          invoice={selectedInvoice}
+          guestName={
+            [guest?.first_name, guest?.last_name].filter(Boolean).join(" ") ||
+            null
+          }
+          guestEmail={guest?.email ?? null}
+          property={property}
+          onClose={() => setSelectedInvoice(null)}
+          onPay={() => {
+            setSelectedInvoice(null);
+            requestPayLink();
+          }}
+          paying={paying}
+        />
+      )}
     </div>
   );
 }
@@ -686,7 +779,17 @@ function InfoRow({
   );
 }
 
-function InvoiceRow({ invoice }: { invoice: Invoice }) {
+function InvoiceRow({
+  invoice,
+  onView,
+  onPay,
+  paying = false,
+}: {
+  invoice: Invoice;
+  onView?: () => void;
+  onPay?: () => void;
+  paying?: boolean;
+}) {
   const invBadge = invoiceStatusBadge[invoice.status];
   const isPayable =
     invoice.status === "pending" ||
@@ -694,7 +797,25 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
     invoice.status === "partial";
 
   return (
-    <Card>
+    <Card
+      onClick={onView}
+      role={onView ? "button" : undefined}
+      tabIndex={onView ? 0 : undefined}
+      onKeyDown={
+        onView
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onView();
+              }
+            }
+          : undefined
+      }
+      className={clsx(
+        onView &&
+          "cursor-pointer transition-colors hover:border-gold-300 hover:bg-sand-50/50",
+      )}
+    >
       <CardBody>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -711,11 +832,24 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
-            <p className="text-base font-semibold text-gray-900">
-              ${invoice.amount.toFixed(2)}
-            </p>
-            {isPayable && (
-              <Button size="sm">
+            <div className="flex items-center gap-1.5">
+              <p className="text-base font-semibold text-gray-900">
+                ${invoice.amount.toFixed(2)}
+              </p>
+              {onView && (
+                <ChevronRight className="h-4 w-4 shrink-0 text-sand-400" />
+              )}
+            </div>
+            {isPayable && onPay && (
+              <Button
+                size="sm"
+                disabled={paying}
+                loading={paying}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPay();
+                }}
+              >
                 <CreditCard className="h-3.5 w-3.5" />
                 Pay
               </Button>
@@ -724,6 +858,31 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
         </div>
       </CardBody>
     </Card>
+  );
+}
+
+function PayNotice({
+  notice,
+}: {
+  notice: { type: "success" | "error"; text: string };
+}) {
+  const ok = notice.type === "success";
+  return (
+    <div
+      className={clsx(
+        "mt-4 flex items-start gap-3 rounded-xl border p-4",
+        ok ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50",
+      )}
+    >
+      {ok ? (
+        <Mail className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
+      ) : (
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+      )}
+      <p className={clsx("text-sm", ok ? "text-green-800" : "text-red-700")}>
+        {notice.text}
+      </p>
+    </div>
   );
 }
 
