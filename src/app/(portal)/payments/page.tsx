@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   CheckCircle,
   Receipt,
@@ -79,7 +79,7 @@ export default function PaymentsPage() {
       return (
         (inv.description?.toLowerCase().includes(q) ?? false) ||
         (inv.booking?.site_or_room?.toLowerCase().includes(q) ?? false) ||
-        (!!d && format(new Date(d), "MMM d, yyyy").toLowerCase().includes(q))
+        (!!d && format(parseISO(d), "MMM d, yyyy").toLowerCase().includes(q))
       );
     },
     [searchQuery],

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getCurrentGuest } from '@/lib/session';
+import { generateGuestReminders } from '@/lib/notifications/generate';
 import type { Notification, ApiResponse } from '@/types';
 
 interface NotificationRow {
@@ -30,6 +31,10 @@ export async function GET() {
     // A guest sees notifications addressed directly to them plus the
     // property-wide broadcasts for the property they're linked to. Admin
     // notifications are excluded.
+    // Derived reminders (invoice due, document expiring) are created here so
+    // the list the guest is about to read is up to date.
+    await generateGuestReminders(guest);
+
     const rows = (await sql`
       select n.id, n.property_id, n.target_type, n.target_id, n.title, n.body,
              n.channel, n.sent_at, n.created_by,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getDemoGuest, NoLinkedGuestError } from '@/lib/newbook/data';
 import { getCurrentGuest } from '@/lib/session';
+import { updateNewbookGuestContact } from '@/lib/newbook/guest-write';
 import { guestFacingError } from '@/lib/api-error';
 import type { Guest, GuestAddress, GuestPreferences, ApiResponse } from '@/types';
 
@@ -63,6 +64,36 @@ export async function PUT(request: Request) {
         { data: null, error: 'No valid fields to update' },
         { status: 400 }
       );
+    }
+
+    // Newbook is the source of truth and the portal re-reads the profile from
+    // it on every load, so push the change THERE FIRST. If Newbook rejects it
+    // we surface the failure instead of saving a local copy the office will
+    // never see. The local row is kept in step afterwards.
+    if (guest.newbook_guest_id) {
+      const address = (body.address ?? {}) as GuestAddress;
+      try {
+        await updateNewbookGuestContact(guest.newbook_guest_id, {
+          first_name: 'first_name' in body ? body.first_name : undefined,
+          last_name: 'last_name' in body ? body.last_name : undefined,
+          phone: 'phone' in body ? body.phone : undefined,
+          street: 'address' in body ? address.street : undefined,
+          city: 'address' in body ? address.city : undefined,
+          zip: 'address' in body ? address.zip : undefined,
+        });
+      } catch (error) {
+        console.error('guests_update failed:', error);
+        return NextResponse.json<ApiResponse<null>>(
+          {
+            data: null,
+            error: guestFacingError(
+              error,
+              "We couldn't save your details with the park's system. Please try again or contact the front desk."
+            ),
+          },
+          { status: 502 }
+        );
+      }
     }
 
     // Only overwrite a column when the caller supplied that field; otherwise

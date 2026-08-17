@@ -1,6 +1,6 @@
 "use client";
 
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   AlertCircle,
   Clock,
@@ -82,8 +82,8 @@ export function InvoiceTable({
                   {invoice.booking && (
                     <p className="mt-0.5 text-xs text-sand-500">
                       {invoice.booking.site_or_room} &middot;{" "}
-                      {format(new Date(invoice.booking.check_in), "MMM d")} -{" "}
-                      {format(new Date(invoice.booking.check_out), "MMM d")}
+                      {format(parseISO(invoice.booking.check_in), "MMM d")} -{" "}
+                      {format(parseISO(invoice.booking.check_out), "MMM d")}
                     </p>
                   )}
                 </div>
@@ -112,12 +112,12 @@ export function InvoiceTable({
                           : "text-sand-500",
                       )}
                     >
-                      Due {format(new Date(invoice.due_date), "MMM d, yyyy")}
+                      Due {format(parseISO(invoice.due_date), "MMM d, yyyy")}
                     </p>
                   )}
                   {invoice.paid_at && invoice.status === "paid" && (
                     <p className="text-xs text-sand-500">
-                      Paid {format(new Date(invoice.paid_at), "MMM d, yyyy")}
+                      Paid {format(parseISO(invoice.paid_at), "MMM d, yyyy")}
                     </p>
                   )}
                 </div>
@@ -185,8 +185,8 @@ export function InvoiceTable({
                     {invoice.booking && (
                       <p className="mt-0.5 text-xs text-sand-500">
                         {invoice.booking.site_or_room} &middot;{" "}
-                        {format(new Date(invoice.booking.check_in), "MMM d")} -{" "}
-                        {format(new Date(invoice.booking.check_out), "MMM d")}
+                        {format(parseISO(invoice.booking.check_in), "MMM d")} -{" "}
+                        {format(parseISO(invoice.booking.check_out), "MMM d")}
                       </p>
                     )}
                   </td>
@@ -195,9 +195,9 @@ export function InvoiceTable({
                   </td>
                   <td className="px-6 py-4 text-sm text-sand-600">
                     {readonly && invoice.paid_at
-                      ? format(new Date(invoice.paid_at), "MMM d, yyyy")
+                      ? format(parseISO(invoice.paid_at), "MMM d, yyyy")
                       : invoice.due_date
-                        ? format(new Date(invoice.due_date), "MMM d, yyyy")
+                        ? format(parseISO(invoice.due_date), "MMM d, yyyy")
                         : "--"}
                   </td>
                   <td className="px-6 py-4">

@@ -1,6 +1,9 @@
 "use client";
 
-import { format } from "date-fns";
+// Newbook hands back date-only strings for due/paid dates. `new Date` reads
+// those as UTC midnight, which renders as the previous day west of UTC, so
+// parse them as local dates instead.
+import { format, parseISO } from "date-fns";
 import { Printer, FileDown } from "lucide-react";
 import type { Invoice, InvoiceStatus, Property } from "@/types/index";
 import { Modal } from "@/components/ui/modal";
@@ -194,19 +197,19 @@ export function InvoiceDetailModal({
                   {b.site_or_room}
                 </p>
                 <p className="text-xs text-sand-500">
-                  {format(new Date(b.check_in), "MMM d, yyyy")} –{" "}
-                  {format(new Date(b.check_out), "MMM d, yyyy")}
+                  {format(parseISO(b.check_in), "MMM d, yyyy")} –{" "}
+                  {format(parseISO(b.check_out), "MMM d, yyyy")}
                 </p>
               </>
             )}
             {invoice.due_date && invoice.status !== "paid" && (
               <p className="mt-1 text-xs text-sand-500">
-                Due {format(new Date(invoice.due_date), "MMM d, yyyy")}
+                Due {format(parseISO(invoice.due_date), "MMM d, yyyy")}
               </p>
             )}
             {invoice.paid_at && invoice.status === "paid" && (
               <p className="mt-1 text-xs text-sand-500">
-                Paid {format(new Date(invoice.paid_at), "MMM d, yyyy")}
+                Paid {format(parseISO(invoice.paid_at), "MMM d, yyyy")}
               </p>
             )}
           </div>

@@ -32,7 +32,7 @@
       "autoPort": true
     },
     {
-      "name": "guest-portal-unsynced",
+      "name": "guest-portal-local-dist",
       "runtimeExecutable": "/tmp/lh-dev.sh",
       "runtimeArgs": [],
       "port": 3100,

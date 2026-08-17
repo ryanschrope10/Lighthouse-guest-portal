@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   User,
   Mail,
@@ -8,11 +10,16 @@ import {
   BellRing,
   Check,
   Minus,
+  Pencil,
+  Save,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { useGuest } from "@/lib/context/guest-context";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { GuestAddress } from "@/types/index";
+import type { ApiResponse, Guest, GuestAddress } from "@/types/index";
 
 interface ContactForm {
   first_name: string;
@@ -39,12 +46,63 @@ export function ContactDetails() {
     },
   };
 
-  // Read-only view of the Newbook record. The portal reads this profile
-  // straight from Newbook on every load, and there is no write-back path
-  // yet, so an in-portal edit could not reach the PMS or survive a refresh.
-  // Guests are pointed at the front desk instead of being shown a Save
-  // button that does nothing.
-  const form = initialForm;
+  const router = useRouter();
+  const [form, setForm] = useState<ContactForm>(initialForm);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function updateField<K extends keyof ContactForm>(
+    key: K,
+    value: ContactForm[K],
+  ) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateAddress<K extends keyof GuestAddress>(key: K, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      address: { ...prev.address, [key]: value },
+    }));
+  }
+
+  function handleCancel() {
+    setForm(initialForm);
+    setError(null);
+    setEditing(false);
+  }
+
+  // Saves through to Newbook (the API pushes guests_update before touching
+  // our own row), so the office sees the same details the guest just entered.
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/guest/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: form.first_name,
+          last_name: form.last_name,
+          phone: form.phone,
+          address: form.address,
+        }),
+      });
+      const json: ApiResponse<Guest> = await res.json();
+      if (!res.ok || json.error) {
+        setError(json.error ?? "We couldn't save your details.");
+        return;
+      }
+      setEditing(false);
+      // The profile is read from Newbook on load; refresh so what's shown is
+      // what Newbook now holds rather than our optimistic copy.
+      router.refresh();
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -54,6 +112,23 @@ export function ContactDetails() {
           <User className="h-5 w-5" />
           <span className="text-sm font-medium">Personal Information</span>
         </div>
+        {!editing ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-gold-600 transition-colors hover:text-gold-700"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </button>
+        ) : (
+          <button
+            onClick={handleCancel}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-sand-500 transition-colors hover:text-sand-700"
+          >
+            <X className="h-3.5 w-3.5" />
+            Cancel
+          </button>
+        )}
       </div>
 
       {/* Name fields */}
@@ -62,14 +137,16 @@ export function ContactDetails() {
           label="First Name"
           name="first_name"
           value={form.first_name}
-          disabled
+          onChange={(e) => updateField("first_name", e.target.value)}
+          disabled={!editing}
           placeholder="First name"
         />
         <Input
           label="Last Name"
           name="last_name"
           value={form.last_name}
-          disabled
+          onChange={(e) => updateField("last_name", e.target.value)}
+          disabled={!editing}
           placeholder="Last name"
         />
       </div>
@@ -93,7 +170,8 @@ export function ContactDetails() {
             name="phone"
             type="tel"
             value={form.phone}
-            disabled
+            onChange={(e) => updateField("phone", e.target.value)}
+            disabled={!editing}
             placeholder="(555) 123-4567"
           />
           <Phone className="pointer-events-none absolute right-3 top-[38px] h-4 w-4 text-sand-400" />
@@ -110,7 +188,8 @@ export function ContactDetails() {
           label="Street Address"
           name="street"
           value={form.address.street ?? ""}
-          disabled
+          onChange={(e) => updateAddress("street", e.target.value)}
+          disabled={!editing}
           placeholder="123 Main St"
         />
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -119,7 +198,8 @@ export function ContactDetails() {
               label="City"
               name="city"
               value={form.address.city ?? ""}
-              disabled
+              onChange={(e) => updateAddress("city", e.target.value)}
+              disabled={!editing}
               placeholder="City"
             />
           </div>
@@ -128,13 +208,15 @@ export function ContactDetails() {
             name="state"
             value={form.address.state ?? ""}
             disabled
+            helperText="Contact the front desk"
             placeholder="TX"
           />
           <Input
             label="ZIP"
             name="zip"
             value={form.address.zip ?? ""}
-            disabled
+            onChange={(e) => updateAddress("zip", e.target.value)}
+            disabled={!editing}
             placeholder="78701"
           />
           <Input
@@ -142,6 +224,7 @@ export function ContactDetails() {
             name="country"
             value={form.address.country ?? ""}
             disabled
+            helperText="Contact the front desk"
             placeholder="US"
           />
         </div>
@@ -172,10 +255,25 @@ export function ContactDetails() {
         </div>
       )}
 
-      <p className="border-t border-sand-200 pt-4 text-xs text-sand-500">
-        These details come from your reservation record. Contact the front desk
-        to update your name, phone, or mailing address.
-      </p>
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {editing ? (
+        <div className="flex justify-end border-t border-sand-200 pt-4">
+          <Button onClick={handleSave} loading={saving} disabled={saving}>
+            <Save className="h-4 w-4" />
+            Save Changes
+          </Button>
+        </div>
+      ) : (
+        <p className="border-t border-sand-200 pt-4 text-xs text-sand-500">
+          Changes here update your reservation record with the park.
+        </p>
+      )}
     </div>
   );
 }
