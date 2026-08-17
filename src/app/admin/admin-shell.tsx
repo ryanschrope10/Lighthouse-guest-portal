@@ -18,6 +18,7 @@ import {
   Inbox,
   Lock,
   Wifi,
+  KeyRound,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -30,6 +31,7 @@ const adminNav = [
   { href: "/admin/reviews", label: "Reviews & Feedback", icon: Star },
   { href: "/admin/addons", label: "Add-ons Catalog", icon: ShoppingBag },
   { href: "/admin/lock-codes", label: "Lock Codes", icon: Lock },
+  { href: "/admin/accounts", label: "Guest Accounts", icon: KeyRound },
   { href: "/admin/content", label: "Content Management", icon: FileText },
   { href: "/admin/wifi", label: "Wi-Fi Info", icon: Wifi },
   { href: "/admin/properties", label: "Properties", icon: Building2 },

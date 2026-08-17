@@ -1,0 +1,11 @@
+var R=require("../../../chunks/[turbopack]_runtime.js")("server/app/api/notifications/route.js")
+R.c("server/chunks/node_modules_date-fns_differenceInCalendarDays_0~ohk9m.js")
+R.c("server/chunks/_0giojy.._.js")
+R.c("server/chunks/[root-of-the-server]__070f-gr._.js")
+R.c("server/chunks/[root-of-the-server]__0j8-xkl._.js")
+R.c("server/chunks/src_lib_db_ts_0n6r210._.js")
+R.c("server/chunks/node_modules_next_dist_esm_build_templates_app-route_0so92h8.js")
+R.c("server/chunks/_07qwnow._.js")
+R.c("server/chunks/_next-internal_server_app_api_notifications_route_actions_0mycgp_.js")
+R.m(94483)
+module.exports=R.m(94483).exports

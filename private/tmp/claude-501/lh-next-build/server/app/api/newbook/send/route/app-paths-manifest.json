@@ -1,0 +1,3 @@
+{
+  "/api/newbook/send/route": "app/api/newbook/send/route.js"
+}

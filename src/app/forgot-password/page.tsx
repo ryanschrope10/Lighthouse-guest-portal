@@ -35,12 +35,12 @@ export default function ForgotPasswordPage() {
             </h2>
             <p className="mt-3 text-sm text-gray-600">
               For your security, password resets are handled by our team.
-              Please contact the front desk and a staff member will help you
-              regain access to your account.
+              Contact the front desk and a staff member will send you a
+              single-use link to choose a new password.
             </p>
             <p className="mt-4 text-sm text-gray-600">
               You can reach us by phone or email, or stop by the office during
-              business hours.
+              business hours. Reset links expire after an hour.
             </p>
           </div>
         </div>

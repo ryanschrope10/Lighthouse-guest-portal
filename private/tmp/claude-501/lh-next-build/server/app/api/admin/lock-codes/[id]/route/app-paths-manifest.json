@@ -1,0 +1,3 @@
+{
+  "/api/admin/lock-codes/[id]/route": "app/api/admin/lock-codes/[id]/route.js"
+}

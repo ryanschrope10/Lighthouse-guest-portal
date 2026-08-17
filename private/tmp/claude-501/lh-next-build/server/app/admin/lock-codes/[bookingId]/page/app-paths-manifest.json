@@ -1,0 +1,3 @@
+{
+  "/admin/lock-codes/[bookingId]/page": "app/admin/lock-codes/[bookingId]/page.js"
+}

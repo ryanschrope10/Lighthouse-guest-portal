@@ -36,7 +36,9 @@
     ".next/dev/types/**/*.ts",
     ".next-local/types/**/*.ts",
     ".next-local/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    "/private/tmp/claude-501/lh-next-build/types/**/*.ts",
+    "/private/tmp/claude-501/lh-next-build/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

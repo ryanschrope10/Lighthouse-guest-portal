@@ -6,7 +6,14 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require auth
-  const publicRoutes = ['/login', '/register', '/forgot-password'];
+  // /reset-password is reached from a staff-issued link, by definition
+  // without a session — the token in the URL is the authorisation.
+  const publicRoutes = [
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
+  ];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
   const isApiRoute = pathname.startsWith('/api');
   const isStaticAsset =
@@ -32,8 +39,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect authenticated users away from auth pages
-  if (token && isPublicRoute) {
+  // Redirect authenticated users away from auth pages — except the reset
+  // page, which stays reachable with a session (a guest who opens their link
+  // on a device that's still signed in should land on the form, not the
+  // dashboard).
+  if (token && isPublicRoute && !pathname.startsWith('/reset-password')) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);

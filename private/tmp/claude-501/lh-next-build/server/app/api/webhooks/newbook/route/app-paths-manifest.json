@@ -1,0 +1,3 @@
+{
+  "/api/webhooks/newbook/route": "app/api/webhooks/newbook/route.js"
+}
