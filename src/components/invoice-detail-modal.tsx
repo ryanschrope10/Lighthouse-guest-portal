@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { Printer } from "lucide-react";
+import { Printer, FileDown } from "lucide-react";
 import type { Invoice, InvoiceStatus, Property } from "@/types/index";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -115,6 +115,17 @@ export function InvoiceDetailModal({
       className="max-w-2xl"
       footer={
         <div className="print-hide flex flex-wrap items-center justify-end gap-2">
+          {invoice.pdf_url && (
+            <a
+              href={invoice.pdf_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-sand-300 px-3 text-sm font-medium text-sand-700 transition-colors hover:bg-sand-50"
+            >
+              <FileDown className="h-4 w-4" />
+              Official PDF
+            </a>
+          )}
           <Button variant="secondary" size="sm" onClick={() => window.print()}>
             <Printer className="h-4 w-4" />
             Print

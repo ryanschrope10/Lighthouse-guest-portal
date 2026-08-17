@@ -224,6 +224,11 @@ export interface Invoice {
   description: string | null;
   line_items: InvoiceLineItem[];
   taxes?: InvoiceTax[];
+  /**
+   * Short-lived signed link to Newbook's own invoice PDF. Present only for
+   * real Newbook invoices, and it expires — fetch it fresh, don't store it.
+   */
+  pdf_url?: string | null;
   synced_at: string;
   // Joined data
   booking?: Booking;

@@ -1,0 +1,9 @@
+{
+  "/(portal)/bookings/[id]/page": "app/(portal)/bookings/[id]/page.js",
+  "/api/admin/lock-codes/route": "app/api/admin/lock-codes/route.js",
+  "/api/bookings/[id]/addons/route": "app/api/bookings/[id]/addons/route.js",
+  "/api/bookings/[id]/extend/route": "app/api/bookings/[id]/extend/route.js",
+  "/api/bookings/[id]/route": "app/api/bookings/[id]/route.js",
+  "/api/notifications/route": "app/api/notifications/route.js",
+  "/login/page": "app/login/page.js"
+}

@@ -141,6 +141,45 @@ export interface NewBookPaymentPlan {
   description?: string | null;
 }
 
+/**
+ * A real invoice from Newbook's `invoices_list`. Newbook generates one invoice
+ * per billing period AS IT FALLS DUE — a year-long monthly booking has only
+ * the months billed so far, not all twelve — so these are the only invoices
+ * that actually exist, and their ids are the ones a payment can be applied to.
+ */
+export interface NewBookInvoice {
+  id: string;
+  account_id: string;
+  account_for: string;
+  account_for_id: string;
+  account_for_name?: string;
+  description: string;
+  due_on: string | null;
+  total: number;
+  paid_total: number;
+  generated_when: string | null;
+  voided_when: string | null;
+  /** Short-lived signed links to Newbook's own invoice PDF. */
+  view_link?: string;
+  download_link?: string;
+  items?: NewBookInvoiceItem[];
+}
+
+export interface NewBookInvoiceItem {
+  id: string;
+  type: 'charges' | 'credits' | string;
+  description: string;
+  amount: number;
+  link_period_from?: string | null;
+  link_period_to?: string | null;
+  taxes?: Array<{
+    tax_id: number;
+    tax_name: string;
+    tax_inclusive: boolean;
+    tax_amount: string | number;
+  }>;
+}
+
 export interface NewBookBooking {
   booking_id: number;
   booking_status: string; // "Unconfirmed" | "Confirmed" | "Arrived" | "Departed"

@@ -4,22 +4,38 @@
     {
       "name": "guest-portal",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
     },
     {
       "name": "guest-portal-prod",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["--max-old-space-size=400", ".next/standalone/server.js"],
+      "runtimeArgs": [
+        "--max-old-space-size=400",
+        ".next/standalone/server.js"
+      ],
       "port": 3000
     },
     {
       "name": "lcp-website",
       "cwd": "lcp-website",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5173,
+      "autoPort": true
+    },
+    {
+      "name": "guest-portal-unsynced",
+      "runtimeExecutable": "/tmp/lh-dev.sh",
+      "runtimeArgs": [],
+      "port": 3100,
       "autoPort": true
     }
   ]

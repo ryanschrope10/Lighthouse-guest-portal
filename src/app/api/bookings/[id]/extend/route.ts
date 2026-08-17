@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { differenceInCalendarDays } from 'date-fns';
 import { sql } from '@/lib/db';
 import { requireGuest } from '@/lib/session';
 import { ensureBookingSynced } from '@/lib/booking-sync';
@@ -48,7 +48,10 @@ export async function POST(
       );
     }
 
-    const currentCheckOut = parseISO(booking.check_out);
+    // The driver hands timestamptz back as a Date, not an ISO string, so
+    // parseISO would throw ("dateString.split is not a function"). new Date
+    // accepts either.
+    const currentCheckOut = new Date(booking.check_out);
     if (newCheckOut <= currentCheckOut) {
       return NextResponse.json<ApiResponse<null>>(
         { data: null, error: 'new_check_out must be after current check-out' },
@@ -97,7 +100,12 @@ export async function POST(
       differenceInCalendarDays(newCheckOut, currentCheckOut)
     );
     const priceCents = catalog.price_cents * extraNights;
-    const status = hasConflict ? 'pending' : 'auto_approved';
+    // Only auto-approve when the catalog says approval isn't needed. The
+    // conflict check above only sees bookings synced into our own table, so it
+    // can't prove the site is free — telling a guest "approved" on that basis
+    // would commit the park to a date the desk hasn't confirmed.
+    const status =
+      hasConflict || catalog.requires_approval ? 'pending' : 'auto_approved';
 
     const details = {
       has_conflict: hasConflict,

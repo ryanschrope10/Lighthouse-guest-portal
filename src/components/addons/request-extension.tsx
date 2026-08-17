@@ -107,9 +107,16 @@ export function RequestExtension({ bookingId, checkOutIso }: Props) {
                   {catalog.description}
                 </p>
               )}
-              <p className="mt-2 text-sm font-medium text-gray-900">
-                From ${(catalog.price_cents / 100).toFixed(2)} / night
-              </p>
+              {/* No published rate — the desk quotes it, so don't imply $0. */}
+              {nightlyCents > 0 ? (
+                <p className="mt-2 text-sm font-medium text-gray-900">
+                  From ${(nightlyCents / 100).toFixed(2)} / night
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-sand-600">
+                  The front desk will confirm availability and pricing.
+                </p>
+              )}
             </div>
             <Button
               variant="secondary"
@@ -173,11 +180,20 @@ export function RequestExtension({ bookingId, checkOutIso }: Props) {
             />
             {newCheckOut && (
               <p className="text-sm text-sand-600">
-                Estimate:{" "}
-                <span className="font-medium text-gray-900">
-                  ${(estimateCents / 100).toFixed(2)}
-                </span>{" "}
-                ({extraNights} extra night{extraNights === 1 ? "" : "s"})
+                {nightlyCents > 0 ? (
+                  <>
+                    Estimate:{" "}
+                    <span className="font-medium text-gray-900">
+                      ${(estimateCents / 100).toFixed(2)}
+                    </span>{" "}
+                    ({extraNights} extra night{extraNights === 1 ? "" : "s"})
+                  </>
+                ) : (
+                  <>
+                    {extraNights} extra night{extraNights === 1 ? "" : "s"} — the
+                    front desk will confirm the cost with you.
+                  </>
+                )}
               </p>
             )}
             {error && <p className="text-sm text-red-600">{error}</p>}

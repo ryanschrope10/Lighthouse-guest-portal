@@ -28,6 +28,7 @@ import type {
   NewBookGuest,
   NewBookEquipment,
   NewBookInsurancePolicy,
+  NewBookInvoice,
 } from './types';
 
 // Stable, deterministic portal IDs from Newbook IDs.
@@ -144,10 +145,99 @@ function mapBookingType(b: NewBookBooking): Booking['booking_type'] {
 }
 
 /**
+ * Map a real Newbook invoice (`invoices_list`) to the portal's Invoice.
+ *
+ * These are the authoritative billing documents: real ids, real due dates and
+ * a real `paid_total`, so status and balance are read rather than guessed. A
+ * long-stay monthly booking gets one per month as each falls due — Newbook
+ * does not pre-create the rest of the year.
+ */
+export function mapNewbookInvoice(
+  inv: NewBookInvoice,
+  portalIds: { property_id: string; guest_id: string; booking_id: string }
+): Invoice {
+  const total = num(inv.total);
+  const paid = num(inv.paid_total);
+  const balance = Number((total - paid).toFixed(2));
+  const due = inv.due_on ? toIso(inv.due_on) || null : null;
+
+  let status: InvoiceStatus;
+  if (balance <= 0.009) status = 'paid';
+  else if (paid > 0.009) status = 'partial';
+  else if (due && new Date(due) < new Date()) status = 'overdue';
+  else status = 'pending';
+
+  const charges = (inv.items ?? []).filter((i) => i.type !== 'credits');
+  const credits = (inv.items ?? []).filter((i) => i.type === 'credits');
+  const lineItems: InvoiceLineItem[] = [
+    ...charges.map((i) => ({
+      description: i.description,
+      quantity: 1,
+      unit_price: num(i.amount),
+      total: num(i.amount),
+    })),
+    ...credits.map((i) => ({
+      description: i.description,
+      quantity: 1,
+      unit_price: -num(i.amount),
+      total: -num(i.amount),
+    })),
+  ];
+
+  // Newbook taxes are inclusive; group them for display only.
+  const taxByName = new Map<string, { amount: number; inclusive: boolean }>();
+  for (const item of inv.items ?? []) {
+    for (const tx of item.taxes ?? []) {
+      const key = tx.tax_name || 'Tax';
+      const cur = taxByName.get(key) ?? {
+        amount: 0,
+        inclusive: !!tx.tax_inclusive,
+      };
+      cur.amount += num(tx.tax_amount);
+      taxByName.set(key, cur);
+    }
+  }
+  const taxes: InvoiceTax[] = [...taxByName]
+    .map(([name, v]) => ({
+      name,
+      amount: Number(v.amount.toFixed(2)),
+      inclusive: v.inclusive,
+    }))
+    .filter((t) => Math.abs(t.amount) > 0.009);
+
+  return {
+    id: invoicePortalId(inv.id),
+    booking_id: portalIds.booking_id,
+    property_id: portalIds.property_id,
+    guest_id: portalIds.guest_id,
+    newbook_invoice_id: String(inv.id),
+    amount: total,
+    amount_paid: paid,
+    status,
+    due_date: due,
+    paid_at: status === 'paid' ? due : null,
+    description: inv.description,
+    line_items: lineItems,
+    taxes,
+    // Newbook's own view_link/download_link carry the instance api_key inside
+    // a decodable JWT payload, so they must not reach the browser. Point at
+    // our proxy, which fetches a fresh link server-side and streams the PDF.
+    pdf_url:
+      inv.view_link || inv.download_link
+        ? `/api/invoices/${encodeURIComponent(inv.id)}/pdf`
+        : null,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+/**
  * Newbook has no portal-style "invoice" object; a booking's money is
  * spread across `tariffs_quoted` (nightly), `inventory_items` (fees)
  * and `discounts`. We fold those into a single invoice per booking so
  * the portal's invoice/balance UI has something real to render.
+ *
+ * Only used as a fallback when a booking has no real invoices yet (nothing
+ * has been billed), so the guest still sees what their stay will cost.
  */
 function deriveInvoice(
   b: NewBookBooking,
@@ -317,21 +407,16 @@ function mapSignatureInfo(b: NewBookBooking): SignatureInfo {
 }
 
 /** Map a Newbook booking to a fully-populated portal Booking. */
-// ── Monthly statement breakout ─────────────────────────────────────────────
-// Long-stay reservations bill monthly, but Newbook exposes the schedule as
-// EITHER payment-plan installments (authoritative: amount + due date + paid
-// status) OR a monthly repeat charge (a rate + a period, no per-month paid
-// flag). We turn either into one invoice per month so the portal shows a real
-// monthly statement list instead of a single lump sum. Returns null when the
-// booking has no monthly schedule (→ keep the single derived invoice).
-
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-function monthLabel(d: Date): string {
-  return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-}
+// ── Payment-plan schedule ──────────────────────────────────────────────────
+// Some bookings carry Newbook payment-plan installments (authoritative:
+// amount + due date + paid status). Those become one invoice per instalment.
+//
+// This used to ALSO expand a monthly repeat charge into one invoice per month
+// for the whole stay, guessing which months were paid by spreading the
+// account balance earliest-first. That invented invoices Newbook had not
+// issued and reported unbilled future months as "Paid". Real invoices now
+// come from invoices_list (see mapNewbookInvoice); this is only the
+// payment-plan case, which is real data.
 
 function paymentPlanStatus(
   raw: string | null | undefined,
@@ -341,27 +426,6 @@ function paymentPlanStatus(
   if (/paid|complete|processed|success|settled/.test(s)) return 'paid';
   if (dueIso && new Date(dueIso) < new Date()) return 'overdue';
   return 'pending';
-}
-
-function addMonths(base: Date, n: number): Date {
-  const r = new Date(base);
-  const day = base.getDate();
-  r.setMonth(r.getMonth() + n);
-  if (r.getDate() < day) r.setDate(0); // clamp e.g. Jan 31 + 1mo → Feb 28
-  return r;
-}
-
-function monthlySchedule(fromIso: string, toIso2: string): Date[] {
-  const from = new Date(fromIso);
-  const to = new Date(toIso2);
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return [];
-  const out: Date[] = [];
-  for (let i = 0; i < 60; i++) {
-    const d = addMonths(from, i);
-    if (d > to) break;
-    out.push(d);
-  }
-  return out;
 }
 
 function deriveScheduledInvoices(
@@ -398,66 +462,13 @@ function deriveScheduledInvoices(
     });
   }
 
-  // 2) Monthly repeat charge — expand across its period. Newbook gives no
-  //    per-month paid flag, so we apply what's already been paid earliest-first.
-  const monthly = (b.repeat_charges ?? []).find(
-    (rc) =>
-      String(rc.guest_visible) === '1' &&
-      /month/i.test(`${rc.interval_label ?? ''} ${rc.interval ?? ''}`)
-  );
-  if (monthly) {
-    const fromIso = toIso(monthly.period_from ?? b.booking_arrival);
-    const toIso2 = toIso(monthly.period_to ?? b.booking_departure);
-    const dates = monthlySchedule(fromIso, toIso2);
-    if (dates.length >= 2) {
-      const amount = money(num(monthly.amount));
-      let paidRemaining = Math.max(
-        0,
-        num(b.booking_total) - num(b.account_balance)
-      );
-      const now = new Date();
-      return dates.map((d, i) => {
-        const dIso = d.toISOString();
-        let status: InvoiceStatus;
-        let applied = 0;
-        if (paidRemaining >= amount - 0.001) {
-          status = 'paid';
-          applied = amount;
-          paidRemaining -= amount;
-        } else if (paidRemaining > 0.001) {
-          status = 'partial';
-          applied = money(paidRemaining);
-          paidRemaining = 0;
-        } else {
-          status = d < now ? 'overdue' : 'pending';
-        }
-        const label = `${monthly.description || 'Monthly charge'} — ${monthLabel(d)}`;
-        return {
-          ...base,
-          id: `${base.id}-m-${i + 1}`,
-          newbook_invoice_id: `${b.booking_id}-m-${i + 1}`,
-          amount,
-          amount_paid: applied,
-          status,
-          due_date: dIso,
-          paid_at: status === 'paid' ? dIso : null,
-          description: label,
-          line_items: [
-            { description: label, quantity: 1, unit_price: amount, total: amount },
-          ],
-          taxes: [],
-        };
-      });
-    }
-  }
-
   return null;
 }
 
 export function mapBooking(
   b: NewBookBooking,
   property: Property,
-  opts: { guestId?: string } = {}
+  opts: { guestId?: string; invoices?: Invoice[] } = {}
 ): Booking {
   const lead = primaryGuest(b);
   const guest_id =
@@ -538,6 +549,11 @@ export function mapBooking(
     synced_at: new Date().toISOString(),
     created_at: toIso(b.booking_placed) || new Date().toISOString(),
     property,
-    invoices: scheduledInvoices ?? [invoice],
+    // Real Newbook invoices when the booking has been billed; otherwise the
+    // payment-plan schedule (also real Newbook data), else a single estimate
+    // of the whole stay. Nothing here is invented.
+    invoices: opts.invoices?.length
+      ? opts.invoices
+      : (scheduledInvoices ?? [invoice]),
   };
 }

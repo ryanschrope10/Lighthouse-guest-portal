@@ -15,8 +15,15 @@ import type { Booking, Guest, Property } from '@/types/index';
 import { createNewBookClient } from './client';
 import { getDefaultProperty } from './config';
 import { getSessionUser } from '@/lib/session';
-import type { NewBookBooking } from './types';
-import { mapBooking, mapGuest, primaryGuest, guestPortalId } from './mappers';
+import type { NewBookBooking, NewBookInvoice } from './types';
+import {
+  mapBooking,
+  mapGuest,
+  mapNewbookInvoice,
+  primaryGuest,
+  guestPortalId,
+  bookingPortalId,
+} from './mappers';
 import { DEMO_RAW_BOOKINGS } from './fixtures';
 
 /** Thrown when a read is attempted without a signed-in, Newbook-linked guest. */
@@ -146,12 +153,85 @@ async function fetchRawBookings(guestId: string): Promise<NewBookBooking[]> {
   }
 }
 
+// Real invoices, keyed by the set of client accounts requested. Newbook bills
+// a long stay one period at a time, so this is the only accurate picture of
+// what a guest has actually been invoiced (and paid) to date.
+let invoiceCache: { key: string; at: number; raw: NewBookInvoice[] } | null =
+  null;
+
+async function fetchRawInvoices(
+  accountIds: string[],
+): Promise<NewBookInvoice[]> {
+  if (accountIds.length === 0) return [];
+  const key = `${getDefaultProperty()}:${[...accountIds].sort().join(',')}`;
+  const now = Date.now();
+
+  if (invoiceCache && invoiceCache.key === key && now - invoiceCache.at < SUCCESS_TTL_MS) {
+    return invoiceCache.raw;
+  }
+
+  try {
+    const client = createNewBookClient();
+    const raw = await client.request<NewBookInvoice[]>('invoices_list', {
+      account_id: accountIds,
+      account_for: 'bookings',
+      fetch_items: true,
+      data_limit: 1000,
+    });
+    const list = Array.isArray(raw) ? raw : [];
+    invoiceCache = { key, at: Date.now(), raw: list };
+    return list;
+  } catch (error) {
+    // The booking itself still renders; it just falls back to the
+    // whole-stay estimate rather than the per-period invoices.
+    console.warn(
+      'Newbook invoices_list unavailable, falling back to derived invoice:',
+      error instanceof Error ? error.message : error,
+    );
+    return [];
+  }
+}
+
 /** All bookings for the signed-in guest, newest stay first. */
 export async function getBookings(guestId?: string): Promise<Booking[]> {
   const property = getProperty();
   const id = await resolveGuestId(guestId);
-  return (await fetchRawBookings(id))
-    .map((b) => mapBooking(b, property, { guestId: guestPortalId(id) }))
+  const raw = await fetchRawBookings(id);
+
+  const accountIds = [
+    ...new Set(
+      raw
+        .map((b) => b.account_id)
+        .filter((a): a is string => typeof a === 'string' && a.length > 0),
+    ),
+  ];
+  const rawInvoices = await fetchRawInvoices(accountIds);
+
+  // invoices_list reports the booking on `account_for_id`.
+  const byBooking = new Map<string, NewBookInvoice[]>();
+  for (const inv of rawInvoices) {
+    if (inv.voided_when) continue;
+    if (inv.account_for !== 'bookings') continue;
+    const bookingId = String(inv.account_for_id);
+    const list = byBooking.get(bookingId) ?? [];
+    list.push(inv);
+    byBooking.set(bookingId, list);
+  }
+
+  const guest_id = guestPortalId(id);
+  return raw
+    .map((b) => {
+      const invoices = (byBooking.get(String(b.booking_id)) ?? [])
+        .sort((x, y) => (x.due_on ?? '').localeCompare(y.due_on ?? ''))
+        .map((inv) =>
+          mapNewbookInvoice(inv, {
+            property_id: property.id,
+            guest_id,
+            booking_id: bookingPortalId(b.booking_id),
+          }),
+        );
+      return mapBooking(b, property, { guestId: guest_id, invoices });
+    })
     .sort(
       (a, b) =>
         new Date(b.check_in).getTime() - new Date(a.check_in).getTime(),

@@ -6,6 +6,12 @@ const projectRoot = process.cwd();
 const nextConfig: NextConfig = {
   output: "standalone",
 
+  // This project lives under ~/Documents, where a file-sync daemon races the
+  // build's temp-file churn and intermittently fails it with ENOENT. Set
+  // NEXT_DIST_DIR to build/serve from an unsynced path (e.g. /tmp/...) when
+  // that happens; deploys leave it unset and keep the default .next.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+
   // Pin the workspace/file-tracing root to THIS app directory. Without
   // this, extra lockfiles in the tree (e.g. lcp-website, git worktrees)
   // make Next infer a parent dir as the root and nest the standalone
