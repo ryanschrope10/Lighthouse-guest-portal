@@ -12,6 +12,13 @@ export const metadata: Metadata = {
   title: "Guest Portal",
   description: "Manage your bookings, payments, and profile",
   manifest: "/manifest.json",
+  // Icons come from the file conventions in this directory — favicon.ico,
+  // icon.png, apple-icon.png (see scripts/generate-icons.mjs).
+  appleWebApp: {
+    capable: true,
+    title: "Guest Portal",
+    statusBarStyle: "default",
+  },
 };
 
 export const viewport: Viewport = {
